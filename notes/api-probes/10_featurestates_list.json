@@ -1,0 +1,48 @@
+{
+  "method": "GET",
+  "path": "/api/v1/environments/XYyHWp28mMXdvjv6wSDRYS/featurestates/",
+  "status": 200,
+  "body": {
+    "count": 2,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 1875796,
+        "feature_state_value": "control",
+        "multivariate_feature_state_values": [],
+        "identity": null,
+        "deleted_at": null,
+        "uuid": "705050bb-02c3-42ae-a3ae-f7dc0844dac7",
+        "enabled": false,
+        "created_at": "2026-11-25T20:22:02.495847Z",
+        "updated_at": "2026-11-25T20:22:02.495857Z",
+        "live_from": null,
+        "version": 1,
+        "feature": 304833,
+        "environment": 120633,
+        "feature_segment": null,
+        "change_request": null,
+        "environment_feature_version": "61846dd0-14db-43c4-ac76-737b7bda75b5"
+      },
+      {
+        "id": 1875842,
+        "feature_state_value": null,
+        "multivariate_feature_state_values": [],
+        "identity": null,
+        "deleted_at": null,
+        "uuid": "de79e821-8464-429f-bfd4-cf9883924d5f",
+        "enabled": false,
+        "created_at": "2026-11-25T20:40:51.909627Z",
+        "updated_at": "2026-11-25T20:40:51.909635Z",
+        "live_from": null,
+        "version": null,
+        "feature": 304837,
+        "environment": 120633,
+        "feature_segment": null,
+        "change_request": null,
+        "environment_feature_version": "0717df51-2561-45f9-9711-dcc19686bc70"
+      }
+    ]
+  }
+}

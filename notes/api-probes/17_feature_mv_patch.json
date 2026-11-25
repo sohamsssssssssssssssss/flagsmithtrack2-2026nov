@@ -1,0 +1,51 @@
+{
+  "method": "PATCH",
+  "path": "/api/v1/projects/56400/features/304837/",
+  "status": 200,
+  "body": {
+    "id": 304837,
+    "name": "probe_flag",
+    "type": "MULTIVARIATE",
+    "default_enabled": false,
+    "initial_value": null,
+    "created_date": "2026-11-25T20:40:49.002720Z",
+    "description": null,
+    "tags": [],
+    "multivariate_options": [
+      {
+        "id": 36919,
+        "uuid": "ca4ecadc-46ef-4cf5-b5ea-7fa318dd330b",
+        "type": "unicode",
+        "integer_value": null,
+        "string_value": "variant",
+        "boolean_value": null,
+        "default_percentage_allocation": 50,
+        "key": null
+      },
+      {
+        "id": 36918,
+        "uuid": "eaa94d42-c5ee-4423-a778-858a6f632766",
+        "type": "unicode",
+        "integer_value": null,
+        "string_value": "control",
+        "boolean_value": null,
+        "default_percentage_allocation": 50,
+        "key": null
+      }
+    ],
+    "is_archived": false,
+    "owners": [],
+    "group_owners": [],
+    "uuid": "e238e28d-2c74-49fc-92a2-c8f48789b599",
+    "project": 56400,
+    "environment_feature_state": null,
+    "segment_feature_state": null,
+    "num_segment_overrides": 0,
+    "num_identity_overrides": null,
+    "is_server_key_only": false,
+    "last_modified_in_any_environment": "2026-11-25T20:40:51.894206+00:00",
+    "last_modified_in_current_environment": null,
+    "metadata": [],
+    "code_references_counts": []
+  }
+}

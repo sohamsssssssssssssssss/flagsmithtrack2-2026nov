@@ -1,0 +1,86 @@
+[
+  {
+    "endpoint": "/api/v1/projects/",
+    "method": "GET",
+    "works": true,
+    "note": "project id 56400"
+  },
+  {
+    "endpoint": "/api/v1/projects/{id}/environments/",
+    "method": "GET",
+    "works": true,
+    "note": "env id 120633"
+  },
+  {
+    "endpoint": "/api/v1/projects/{id}/features/",
+    "method": "POST",
+    "works": true,
+    "note": "create probe_flag"
+  },
+  {
+    "endpoint": "/api/v1/projects/{id}/features/",
+    "method": "GET",
+    "works": true,
+    "note": "feature id 304837"
+  },
+  {
+    "endpoint": "/api/__future__/environments/{key}/features/{id}/",
+    "method": "GET",
+    "works": true,
+    "note": "identifier used: env api_key"
+  },
+  {
+    "endpoint": "/api/__future__/environments/{key}/features/{id}/",
+    "method": "PATCH",
+    "works": true,
+    "note": "see 06/07 files for result"
+  },
+  {
+    "endpoint": "/api/v1/environments/{key}/featurestates/",
+    "method": "GET",
+    "works": true,
+    "note": "probe_flag state not found"
+  },
+  {
+    "endpoint": "/api/v1/audit/",
+    "method": "GET",
+    "works": false,
+    "note": "HTTP 500"
+  },
+  {
+    "endpoint": "/api/v1/projects/56400/audit/",
+    "method": "GET",
+    "works": true,
+    "note": "see file for fields"
+  },
+  {
+    "endpoint": "/api/v1/environments/XYyHWp28mMXdvjv6wSDRYS/audit/",
+    "method": "GET",
+    "works": false,
+    "note": "HTTP 404"
+  },
+  {
+    "endpoint": "/api/v1/environments/{key}/webhooks/",
+    "method": "GET",
+    "works": true,
+    "note": "HTTP 200"
+  },
+  {
+    "endpoint": "/api/v1/projects/{id}/integrations/",
+    "method": "GET",
+    "works": false,
+    "note": "HTTP 404"
+  },
+  {
+    "endpoint": "/api/v1/projects/{id}/segments/",
+    "method": "POST",
+    "works": true,
+    "note": "HTTP 201"
+  },
+  {
+    "endpoint": "/api/v1/projects/{id}/features/{id}/ (multivariate)",
+    "method": "PATCH",
+    "works": true,
+    "note": "HTTP 200"
+  }
+]

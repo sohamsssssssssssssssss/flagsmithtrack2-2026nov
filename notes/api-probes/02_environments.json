@@ -1,0 +1,45 @@
+{
+  "method": "GET",
+  "path": "/api/v1/projects/56400/environments/",
+  "status": 200,
+  "body": [
+    {
+      "id": 120633,
+      "uuid": "78a71545-9107-4e3d-aa97-7898d73bc98d",
+      "name": "Development",
+      "api_key": "XYyHWp28mMXdvjv6wSDRYS",
+      "description": null,
+      "project": 56400,
+      "minimum_change_request_approvals": null,
+      "allow_client_traits": true,
+      "banner_text": null,
+      "banner_colour": null,
+      "hide_disabled_flags": null,
+      "use_mv_v2_evaluation": true,
+      "use_identity_composite_key_for_hashing": true,
+      "hide_sensitive_data": false,
+      "use_v2_feature_versioning": true,
+      "use_identity_overrides_in_local_eval": true,
+      "is_creating": false
+    },
+    {
+      "id": 120634,
+      "uuid": "29e4bd81-1d21-4818-a68d-3aacf3e88c0f",
+      "name": "Production",
+      "api_key": "aEc2KWstPEVnvfxkHjYCen",
+      "description": null,
+      "project": 56400,
+      "minimum_change_request_approvals": null,
+      "allow_client_traits": true,
+      "banner_text": null,
+      "banner_colour": null,
+      "hide_disabled_flags": null,
+      "use_mv_v2_evaluation": true,
+      "use_identity_composite_key_for_hashing": true,
+      "hide_sensitive_data": false,
+      "use_v2_feature_versioning": true,
+      "use_identity_overrides_in_local_eval": true,
+      "is_creating": false
+    }
+  ]
+}

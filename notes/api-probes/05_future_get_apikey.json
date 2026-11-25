@@ -1,0 +1,13 @@
+{
+  "method": "GET",
+  "path": "/api/__future__/environments/XYyHWp28mMXdvjv6wSDRYS/features/304837/",
+  "status": 200,
+  "body": {
+    "environment_default": {
+      "enabled": false,
+      "value": null,
+      "variants": []
+    },
+    "segment_overrides": []
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "method": "POST",
+  "path": "/api/v1/projects/56400/segments/",
+  "status": 201,
+  "body": {
+    "id": 1204518,
+    "uuid": "690e548a-5223-488e-bb08-843ee8839066",
+    "created_at": "2026-11-25T20:40:55.712346Z",
+    "updated_at": "2026-11-25T20:40:55.724661Z",
+    "name": "probe_segment",
+    "description": null,
+    "project": 56400,
+    "feature": null,
+    "version_of": 1204518,
+    "rules": [
+      {
+        "id": 4341480,
+        "type": "ALL",
+        "rules": [],
+        "conditions": []
+      }
+    ],
+    "metadata": [],
+    "membership_counts": [],
+    "managed_by": "",
+    "cohort": null,
+    "has_overrides": false
+  }
+}

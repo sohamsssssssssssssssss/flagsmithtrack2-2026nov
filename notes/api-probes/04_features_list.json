@@ -1,0 +1,75 @@
+{
+  "method": "GET",
+  "path": "/api/v1/projects/56400/features/",
+  "status": 200,
+  "body": {
+    "count": 2,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 304833,
+        "name": "show_demo_button",
+        "type": "MULTIVARIATE",
+        "default_enabled": false,
+        "initial_value": "control",
+        "created_date": "2026-11-25T20:22:02.442306Z",
+        "description": null,
+        "tags": [
+          35450
+        ],
+        "multivariate_options": [],
+        "is_archived": false,
+        "owners": [
+          {
+            "id": 73248,
+            "email": "sohamsssssssssssssssss@gmail.com",
+            "first_name": "",
+            "last_name": "",
+            "last_login": "2026-11-25T20:21:56.183683Z",
+            "uuid": "2f179ff1-b141-48bc-889f-cb06f859b590"
+          }
+        ],
+        "group_owners": [],
+        "uuid": "711c87e8-7cf0-4ca3-9f27-1681999907d4",
+        "project": 56400,
+        "environment_feature_state": null,
+        "segment_feature_state": null,
+        "num_segment_overrides": 0,
+        "num_identity_overrides": null,
+        "is_num_identity_overrides_complete": true,
+        "is_server_key_only": false,
+        "last_modified_in_any_environment": "2026-11-25T20:22:02.518299+00:00",
+        "last_modified_in_current_environment": null,
+        "metadata": [],
+        "code_references_counts": []
+      },
+      {
+        "id": 304837,
+        "name": "probe_flag",
+        "type": "STANDARD",
+        "default_enabled": false,
+        "initial_value": null,
+        "created_date": "2026-11-25T20:40:49.002720Z",
+        "description": null,
+        "tags": [],
+        "multivariate_options": [],
+        "is_archived": false,
+        "owners": [],
+        "group_owners": [],
+        "uuid": "e238e28d-2c74-49fc-92a2-c8f48789b599",
+        "project": 56400,
+        "environment_feature_state": null,
+        "segment_feature_state": null,
+        "num_segment_overrides": 0,
+        "num_identity_overrides": null,
+        "is_num_identity_overrides_complete": true,
+        "is_server_key_only": false,
+        "last_modified_in_any_environment": "2026-11-25T20:40:49.087661+00:00",
+        "last_modified_in_current_environment": null,
+        "metadata": [],
+        "code_references_counts": []
+      }
+    ]
+  }
+}
