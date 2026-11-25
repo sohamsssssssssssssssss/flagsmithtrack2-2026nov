@@ -1,0 +1,4 @@
+.env
+.blast/
+node_modules/
+dist/
