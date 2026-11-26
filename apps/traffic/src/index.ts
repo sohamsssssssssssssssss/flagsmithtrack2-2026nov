@@ -91,7 +91,10 @@ async function main(): Promise<void> {
   const startedAt = Date.now();
   let lastTickAt = startedAt;
 
-  const workerCount = Math.min(users.length, Math.max(12, Math.ceil(targetRps * 3)));
+  // About one worker per rps keeps the pacer's queue full through think time,
+  // so the target rate holds and a session still finishes in a few seconds.
+  const initialRps = options.burst ? targetRps * BURST_FACTOR : targetRps;
+  const workerCount = Math.min(users.length, Math.max(6, Math.ceil(initialRps * 0.9)));
   let nextUser = 0;
 
   async function worker(): Promise<void> {

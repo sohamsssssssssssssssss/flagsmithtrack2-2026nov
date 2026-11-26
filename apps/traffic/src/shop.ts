@@ -15,14 +15,15 @@ export type ShopSessionOptions = {
   isStopped?: () => boolean;
 };
 
-type CartItem = { productId: string; quantity: number };
+type CartItem = { id: string; quantity: number };
 
 const SEARCH_CHANCE = 0.6;
 const RECS_CHANCE = 0.55;
 const CONFIG_CHANCE = 0.2;
-const DISCOUNT_CODES = ["BLAST10", "SAVE20", "WELCOME5"] as const;
-const SEARCHES = ["shoes", "jacket", "lamp", "mug", "backpack", "headphones", "tee"] as const;
-const FALLBACK_PRODUCT_IDS = ["sku-1", "sku-2", "sku-3"] as const;
+// LUMEN10 is the Lumen Shop promo code; other codes exercise the lookup too.
+const DISCOUNT_CODES = ["LUMEN10", "LUMEN10", "GLOW15"] as const;
+const SEARCHES = ["lamp", "mug", "planter", "throw", "glow", "dune", "grove"] as const;
+const FALLBACK_PRODUCT_IDS = ["glow", "dune", "grove", "drift"] as const;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -59,7 +60,7 @@ function buildItems(products: unknown, random: () => number): CartItem[] {
     items.set(id, Math.min(2, (items.get(id) ?? 0) + quantity));
   }
 
-  return [...items].map(([productId, quantity]) => ({ productId, quantity }));
+  return [...items].map(([id, quantity]) => ({ id, quantity }));
 }
 
 /**
