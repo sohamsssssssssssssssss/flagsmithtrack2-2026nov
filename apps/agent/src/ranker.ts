@@ -13,14 +13,11 @@ export type FlagFiles = Record<string, string[]>;
 export function readFlagFiles(): FlagFiles {
   try {
     const data = JSON.parse(readFileSync(`${BLAST_DIR}/flagmap.json`, "utf8"));
-    const entries = Object.entries(data.filesByFlag ?? {}).filter((entry): entry is [string, string[]] =>
-      Array.isArray(entry[1]) && entry[1].every((file) => typeof file === "string"));
-    for (const node of Array.isArray(data.nodes) ? data.nodes : []) {
-      const key = node.flag_key ?? node.flag;
-      if (typeof key === "string" && typeof node.file === "string") entries.push([key, [node.file]]);
-    }
     const files = Object.create(null) as FlagFiles;
-    for (const [key, paths] of entries) (files[key] ??= []).push(...paths);
+    for (const [key, value] of Object.entries(data.flags ?? {})) {
+      const paths = (value as { files?: unknown } | null)?.files;
+      if (Array.isArray(paths) && paths.every((file) => typeof file === "string")) files[key] = paths;
+    }
     return files;
   } catch {
     return {};

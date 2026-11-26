@@ -65,3 +65,9 @@ Each run used a fresh agent database, a clean pre-break traffic period, and the 
 | 3 | 10.989 s | 31.862 s | 52.517 s | 0.000761 |
 
 All three incidents scoped to `/api/checkout`. The **25-second incident and 35-second proposal targets were missed in all three trials**. At default settings only a fraction of the 8 requests per second are checkouts, and roughly one in ten checkouts combines the beta cohort with a discount. The first error took up to 11 seconds to arrive. Two completed 10-second buckets, five errors, and Fisher significance can require additional traffic even when the off cohort has zero errors. Run 1 stayed ambiguous because its p-value remained above 0.001. The two-minute recovery watch remains unchanged.
+
+## D2-D generated map
+
+The agent started with an empty runtime directory and generated the map from the repository and live feature names. The live graph had 6 flags, 9 hits, 4 files, 4 routes, 14 nodes, and 14 edges. Chrome verified the refresh endpoint, selected `new_checkout`, and displayed the direct ternary reference in `app.ts` and its linked call in `checkout/applyDiscount.ts`, both under `/api/checkout`.
+
+The map proof used an elevated 80% discount-code rate to reach a confident incident quickly. `new_checkout` turned red on the live graph without a hand-written map. The screenshot is in `notes/screens/map.png`. The demo reset verified that the default and beta override were off.

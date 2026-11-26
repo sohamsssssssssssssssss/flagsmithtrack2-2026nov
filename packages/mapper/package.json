@@ -5,11 +5,25 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p .",
     "lint": "tsc -p . --noEmit",
-    "dev": "tsc -p . --watch --preserveWatchOutput"
+    "dev": "tsc -p . --watch --preserveWatchOutput",
+    "map": "node --import tsx src/cli.ts"
   },
-  "dependencies": { "@blast/shared": "workspace:*" }
+  "dependencies": {
+    "@babel/parser": "^7.29.15",
+    "@babel/traverse": "^7.29.15",
+    "@babel/types": "^7.29.15",
+    "@blast/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/babel__traverse": "^7.28.0"
+  }
 }

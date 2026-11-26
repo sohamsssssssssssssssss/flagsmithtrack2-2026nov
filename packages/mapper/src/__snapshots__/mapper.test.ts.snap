@@ -1,0 +1,42 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`snapshots the real shop's checkout mapping 1`] = `
+{
+  "files": [
+    "apps/demo-shop/api/src/app.ts",
+    "apps/demo-shop/api/src/checkout/applyDiscount.ts",
+  ],
+  "hits": [
+    {
+      "confidence": "high",
+      "file": "apps/demo-shop/api/src/app.ts",
+      "flag": "new_checkout",
+      "function": "priceCart",
+      "guard": {
+        "end_line": 73,
+        "kind": "ternary",
+        "start_line": 72,
+      },
+      "line": 71,
+      "routes": [
+        "/api/checkout",
+      ],
+    },
+    {
+      "confidence": "low",
+      "file": "apps/demo-shop/api/src/checkout/applyDiscount.ts",
+      "flag": "new_checkout",
+      "function": "applyDiscount",
+      "guard": null,
+      "line": 1,
+      "routes": [
+        "/api/checkout",
+      ],
+      "via": "apps/demo-shop/api/src/app.ts:71",
+    },
+  ],
+  "routes": [
+    "/api/checkout",
+  ],
+}
+`;

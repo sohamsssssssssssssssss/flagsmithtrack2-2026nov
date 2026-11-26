@@ -1,3 +1,4 @@
+import type { createFlagMap } from "./flagmap.js";
 import type { buildIncidents } from "./incidents.js";
 import type { buildProposals } from "./proposals.js";
 import Fastify from "fastify";
@@ -10,6 +11,7 @@ import { metrics } from "./metrics.js";
 /** Bus events: "change" (FlagChange) from the watcher, "bucket" (latest metrics) after ingest. */
 export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
   incidents: ReturnType<typeof buildIncidents>; proposals: ReturnType<typeof buildProposals>;
+  flagMap?: ReturnType<typeof createFlagMap>;
 }) {
   const app = Fastify({ logger: false });
   bus.setMaxListeners(0);
@@ -70,6 +72,11 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
 
   if (workflow) {
     const { incidents, proposals } = workflow;
+    if (workflow.flagMap) {
+      const flagMap = workflow.flagMap;
+      app.get("/api/map", (_req, reply) => flagMap.get() ?? reply.code(503).send({ message: "Flag map is being generated" }));
+      app.post("/api/map/refresh", () => flagMap.refresh());
+    }
     app.get("/api/incidents", () => incidents.list());
     app.get<{ Params: { id: string } }>("/api/incidents/:id", (req) => incidents.get(Number(req.params.id)));
     app.post<{ Params: { id: string }; Body: { flag: string } }>("/api/incidents/:id/propose", {

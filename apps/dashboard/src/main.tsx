@@ -1,12 +1,13 @@
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { MapView } from "./MapView";
 import { IncidentCard } from "./IncidentCard";
 import { changeLabel, TrafficChart } from "./TrafficChart";
 import { api, duration, time, type Evidence, type Flag, type FlagChange, type Incident, type IncidentDetail, type Metrics } from "./model";
 import "./dashboard.css";
 
 function Dashboard() {
-  const [tab, setTab] = useState<"overview" | "audit">("overview");
+  const [tab, setTab] = useState<"overview" | "audit" | "map">("overview");
   const [flags, setFlags] = useState<Flag[]>([]);
   const [changes, setChanges] = useState<FlagChange[]>([]);
   const [metrics, setMetrics] = useState<Metrics>({ overall: [], bucket_ms: 10_000 });
@@ -77,6 +78,7 @@ function Dashboard() {
       <div className="brand"><span className="brand-mark" aria-hidden="true">◈</span><span>Blast Radius</span></div>
       <nav aria-label="Dashboard">
         <button aria-current={tab === "overview" ? "page" : undefined} onClick={() => setTab("overview")}>Overview</button>
+        <button aria-current={tab === "map" ? "page" : undefined} onClick={() => setTab("map")}>Map</button>
         <button aria-current={tab === "audit" ? "page" : undefined} onClick={() => setTab("audit")}>Audit log</button>
       </nav>
       <div className="top-status">{simulated && <span className="badge simulated">SIMULATED TRAFFIC</span>}
@@ -84,8 +86,8 @@ function Dashboard() {
     </header>
     <main>
       <div className="page-heading">
-        <div><h1>{tab === "overview" ? "Rollout monitor" : "Audit log"}</h1>
-          <p>{tab === "overview" ? "Flag changes, live errors and incident response." : "Review proposals, approvals and verified outcomes."}</p></div>
+        <div><h1>{tab === "overview" ? "Rollout monitor" : tab === "map" ? "Flag map" : "Audit log"}</h1>
+          <p>{tab === "overview" ? "Flag changes, live errors and incident response." : tab === "map" ? "Trace live flags to files and routes." : "Review proposals, approvals and verified outcomes."}</p></div>
         <div className={`connection ${connected && !failed ? "online" : ""}`} role="status"><i />
           {connected && !failed ? "Live connection" : loading ? "Connecting" : "Reconnecting"}</div>
       </div>
@@ -112,7 +114,7 @@ function Dashboard() {
           </section>
         </div>
         <IncidentCard key={incident?.id ?? "quiet"} incident={incident} evidence={evidence} now={now} onDecision={decide} onPropose={propose} />
-      </div> : <section className="panel audit">
+      </div> : tab === "map" ? <MapView flags={flags} incident={incident} /> : <section className="panel audit">
         <table><thead><tr><th>Proposal</th><th>Flag</th><th>Created</th><th>Approver</th><th>Decision</th><th>Action</th><th>Outcome</th></tr></thead>
           <tbody>{details.flatMap((item) => item.proposals.map((proposal) => {
             const action = item.actions.find((entry) => entry.proposal_id === proposal.id);
