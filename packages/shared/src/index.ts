@@ -15,6 +15,7 @@ export const FlagSnapshot = z.record(z.string(), FlagState);
 export type FlagSnapshot = z.infer<typeof FlagSnapshot>;
 
 export const ErrorEvent = z.object({
+  /** Epoch milliseconds. */
   ts: z.number(),
   identity: z.string(),
   route: z.string(),
@@ -32,6 +33,7 @@ export type ErrorIngest = z.infer<typeof ErrorIngest>;
 
 /** Body of POST /ingest/requests: per-route counts split by flag state (the denominator). */
 export const RequestBatch = z.object({
+  /** Bucket start, epoch milliseconds. The agent re-buckets to 30 s. */
   ts_bucket: z.number(),
   route: z.string(),
   rows: z.array(
@@ -45,13 +47,18 @@ export const RequestBatch = z.object({
 });
 export type RequestBatch = z.infer<typeof RequestBatch>;
 
+/** Live state of a flag in one environment, as the agent reads it from the Flagsmith Admin API. */
+export const SegmentOverrideState = z.object({ segment_id: z.number().int(), enabled: z.boolean(), value: FlagValue });
+export const FlagLiveState = FlagState.extend({ overrides: z.array(SegmentOverrideState) });
+export type FlagLiveState = z.infer<typeof FlagLiveState>;
+
 export const FlagChange = z.object({
   ts: z.number(),
   env: z.string(),
   flag_key: z.string(),
   feature_id: z.number().int(),
-  before: FlagState.nullable(), // null when the flag first appears
-  after: FlagState.nullable(), // null when the flag disappears
+  before: FlagLiveState.nullable(), // null when the flag first appears
+  after: FlagLiveState.nullable(), // null when the flag disappears
   source: z.enum(["poll", "agent"]),
 });
 export type FlagChange = z.infer<typeof FlagChange>;
