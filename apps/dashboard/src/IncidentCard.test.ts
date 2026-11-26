@@ -66,6 +66,13 @@ describe("incident card", () => {
     expect(html).not.toContain('value="approve"');
   });
 
+  it("shows cohort counts while gathering evidence for an ambiguous incident", () => {
+    const html = render({ ...incident, confidence: "ambiguous", proposal: null, proposals: [] });
+    expect(html).toContain("Gathering evidence… need more data");
+    expect(html).toContain("Evidence: 100 flag-on checkouts, 250 flag-off");
+    expect(html).not.toContain('value="approve"');
+  });
+
   it("shows all quiet with no incidents", () => {
     expect(render(null)).toContain("All quiet");
   });

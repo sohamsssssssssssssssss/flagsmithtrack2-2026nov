@@ -4,6 +4,7 @@ import { tsImport } from "tsx/esm/api";
 
 export async function runDemoFlag(mode) {
   const args = process.argv.slice(2);
+  const rehearsal = process.env.BLAST_REHEARSAL === "1";
   const probe = mode === "reset" && args.includes("--probe-override-list");
   if (args.some((arg) => arg !== "--yes" && !(probe && arg === "--probe-override-list"))) {
     console.error(`Usage: node scripts/demo-${mode}.mjs [--yes]${mode === "reset" ? " [--probe-override-list]" : ""}`);
@@ -22,7 +23,7 @@ export async function runDemoFlag(mode) {
   );
   const featureId = features.new_checkout;
   const segmentId = segments.beta_cohort;
-  const action = { via: `demo-${mode}`, flag: "new_checkout", feature_id: featureId, env: cfg.envName };
+  const action = { via: rehearsal ? "rehearsal" : `demo-${mode}`, mode, flag: "new_checkout", feature_id: featureId, env: cfg.envName };
   let step = "preflight";
   let writes = 0;
   const client = new FlagsmithClient(cfg, async (url, init) => {
@@ -56,8 +57,8 @@ export async function runDemoFlag(mode) {
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       const answer = await rl.question("Apply this plan? [y/N] ").finally(() => rl.close());
       if (answer.trim().toLowerCase() !== "y") throw new Error("Cancelled");
-    } else if (!args.includes("--yes")) {
-      throw new Error("Pass --yes to approve in a non-interactive shell");
+    } else if (!rehearsal || !args.includes("--yes")) {
+      throw new Error("Use a terminal to confirm. Non-interactive --yes is reserved for scripts/rehearse.mjs");
     }
     audit("flagsmith_demo_approved", { ...action, before, probe });
     if (JSON.stringify(await client.getState(featureId)) !== JSON.stringify(before)) {

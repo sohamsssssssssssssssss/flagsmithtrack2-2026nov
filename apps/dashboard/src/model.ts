@@ -13,7 +13,7 @@ export type Incident = {
   id: number; opened_ts: number; closed_ts: number | null; status: string; top_flag: string | null;
   rollout_status?: "active" | "paused" | "complete" | null;
   confidence: "confident" | "ambiguous"; ranking: Candidate[];
-  evidence: { start: number; end: number; baseline: Cohort; recent: Cohort };
+  evidence: { start: number; end: number; route?: string; baseline: Cohort; recent: Cohort };
 };
 export type Proposal = {
   id: number; incident_id: number; flag: string; kind?: string; stage?: number; rollback?: boolean; evidence?: Candidate; created: number; expires: number;

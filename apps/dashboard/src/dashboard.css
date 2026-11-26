@@ -107,3 +107,7 @@ button.primary { background: #ef795e; color: #171311; border-color: #f39a85; }bu
 .rollout-stages strong { font-size: 16px; }.rollout-stages span, .rollout-stages small { font-size: 10px; color: var(--muted); }
 .rollout-stages .stage-passed { border-color: #31564b; }.rollout-stages .stage-passed strong { color: var(--good); }
 .rollout-strip .rollout-confirm { align-items: center; justify-content: flex-start; }.rollout-confirm input { width: auto; }
+
+.cohort-evidence { display: grid; gap: 2px; color: var(--muted); font-size: 11px; }
+.cohort-evidence:empty { display: none; }
+.cohort-evidence strong { color: var(--warn); font-weight: 650; }

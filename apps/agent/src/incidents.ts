@@ -17,7 +17,7 @@ const decode = ({ ranking_json, evidence_json, ...row }: IncidentRow) =>
 
 export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposals>, bus: EventEmitter,
   log = audit, now = Date.now) {
-  const interval = 1_000;
+  const interval = 250;
   let evaluatedEnd = -1;
   const requests = db.prepare("SELECT * FROM requests WHERE ts_bucket>=? AND ts_bucket<?");
   const failures = db.prepare("SELECT route, stack, flags_json FROM errors WHERE ts>=? AND ts<?");
@@ -40,17 +40,19 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
   }
 
   async function evaluate() {
-    // Shop batches can arrive up to one flush interval after a bucket ends.
-    const end = Math.floor((now() - 2_500) / BUCKET_MS) * BUCKET_MS;
+    // Allow time for the shop's boundary-aligned flush to arrive before reading the completed batch.
+    const end = Math.floor((now() - 500) / 2_000) * 2_000;
     if (end === evaluatedEnd) return;
     evaluatedEnd = end;
     const rows = requests.all(end - 900_000, end) as RequestRow[];
-    const { overall, by_route } = aggregate(rows);
-    const routeSpikes = Object.entries(by_route).flatMap(([route, buckets]) => {
+    const rolling = aggregate(rows, end % BUCKET_MS);
+    const { overall, by_route } = end % BUCKET_MS ? aggregate(rows) : rolling;
+    const completeEnd = Math.floor((now() - 2_500) / BUCKET_MS) * BUCKET_MS;
+    const routeSpikes = Object.entries(rolling.by_route).flatMap(([route, buckets]) => {
       const spike = detectSpike(buckets, end);
       return spike ? [{ route, ...spike }] : [];
     }).sort((a, b) => b.recent.rate! - a.recent.rate!);
-    const recent = routeSpikes[0] ?? detectSpike(overall, end);
+    const recent = routeSpikes[0] ?? detectSpike(rolling.overall, end);
     let open = db.prepare("SELECT * FROM incidents WHERE status='open'").get() as IncidentRow | undefined;
     const lastClosed = (db.prepare("SELECT MAX(closed_ts) AS ts FROM incidents").get() as { ts: number | null }).ts;
     if (!open && recent && (lastClosed === null || recent.start >= lastClosed)) {
@@ -65,7 +67,7 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
       const incident = decode(open);
       const baseline = incident.evidence.baseline.rate!;
       const buckets = incident.evidence.route ? by_route[incident.evidence.route] ?? [] : overall;
-      if (end - RECOVERY_MS >= incident.evidence.end && recovered(buckets, end, baseline)) {
+      if (completeEnd - RECOVERY_MS >= incident.evidence.end && recovered(buckets, completeEnd, baseline)) {
         const ts = now();
         db.prepare("UPDATE incidents SET status='closed',closed_ts=? WHERE id=?").run(ts, open.id);
         db.prepare("UPDATE proposals SET status='cancelled',decision_ts=? WHERE incident_id=? AND status='pending'").run(ts, open.id);
@@ -93,7 +95,7 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
       WHERE a.outcome='watching'`).all() as { id: number; verified_ts: number; incident_id: number; evidence_json: string }[];
     for (const action of watching) {
       const recoveryEnd = Math.ceil(action.verified_ts / BUCKET_MS) * BUCKET_MS + RECOVERY_MS;
-      if (end < recoveryEnd) continue;
+      if (completeEnd < recoveryEnd) continue;
       const evidence = JSON.parse(action.evidence_json) as Spike;
       const buckets = evidence.route ? by_route[evidence.route] ?? [] : overall;
       const outcome = recovered(buckets, recoveryEnd, evidence.baseline.rate!) ? "recovered" : "not_recovered";

@@ -24,6 +24,9 @@ export function IncidentCard({ incident, evidence, now, onDecision, onPropose, o
     ? incident.proposals.find((item) => item.kind !== "rollout_stage" && !item.rollback) ?? null
     : latest;
   const lead = proposal?.evidence ?? incident.ranking[0];
+  const gathering = incident.status === "open" && incident.confidence === "ambiguous";
+  const liveEvidence = gathering ? incident.ranking[0] ?? lead : lead;
+  const cohortLabel = (incident.evidence.route ?? evidence?.route) === "/api/checkout" ? "checkouts" : "requests";
   const action = [...incident.actions].reverse().find((item) => item.proposal_id === proposal?.id);
   const expired = proposal?.status === "expired" || (proposal?.status === "pending" && now >= proposal.expires);
   const pending = proposal?.status === "pending" && !expired;
@@ -63,11 +66,15 @@ export function IncidentCard({ incident, evidence, now, onDecision, onPropose, o
         <div className="cohort-off"><span>FLAG OFF</span><strong>{percent(lead.off.rate)}</strong>
           <small>{lead.off.errors} errors / {lead.off.requests} requests</small></div>
       </div>}
+      <div className="cohort-evidence" role={gathering ? "status" : undefined}>
+        {gathering && <strong>Gathering evidence… need more data</strong>}
+        {(liveEvidence || gathering) && <span>Evidence: {liveEvidence?.on.requests ?? 0} flag-on {cohortLabel}, {liveEvidence?.off.requests ?? 0} flag-off</span>}
+      </div>
       <div className="incident-section">
         <span className="eyebrow">Ranked candidates</span>
         {incident.ranking.length > 0 ? <ol className="candidates">{incident.ranking.map((candidate, index) =>
           <li key={candidate.flag}><span>{String(index + 1).padStart(2, "0")}</span><code>{candidate.flag}</code>
-            <strong>{candidate.score.toFixed(3)}</strong></li>)}</ol> : <p className="muted">Collecting cohort samples.</p>}
+            <strong>{candidate.score.toFixed(3)}</strong></li>)}</ol> : null}
       </div>
       <div className="incident-section evidence">
         <span className="eyebrow">Failing request</span>

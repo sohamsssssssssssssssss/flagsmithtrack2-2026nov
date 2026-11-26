@@ -8,6 +8,7 @@
     "dev": "pnpm --filter @blast/shared --filter @blast/mapper build && pnpm -r --parallel --filter './apps/**' dev",
     "demo:up": "pnpm --filter @blast/shared --filter @blast/mapper build && pnpm --parallel --filter @blast/agent --filter @blast/shop-api --filter @blast/shop-web --filter @blast/dashboard dev",
     "traffic": "pnpm --filter @blast/traffic start --users 300 --rps 8",
+    "traffic:demo": "pnpm --filter @blast/traffic start --users 600 --rps 25 --discount-rate 0.4 --beta-rate 0.5",
     "build": "pnpm -r build",
     "test": "vitest run",
     "lint": "pnpm -r lint",

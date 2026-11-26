@@ -22,6 +22,16 @@ describe("aggregate", () => {
     expect(m.by_flag.smart_search!.off).toEqual([]);
   });
 
+  it("keeps adjacent ten-second windows when aligned to a two-second batch", () => {
+    const rows = [0, 2_000, 10_000, 12_000].map((ts_bucket) =>
+      ({ ts_bucket, route: "/checkout", flag_key: "x", flag_on: 1, count: 3, errors: 1 }));
+    expect(aggregate(rows, 2_000).by_route["/checkout"]).toEqual([
+      { ts: -8_000, requests: 3, errors: 1, rate: 1 / 3 },
+      { ts: 2_000, requests: 6, errors: 2, rate: 1 / 3 },
+      { ts: 12_000, requests: 3, errors: 1, rate: 1 / 3 },
+    ]);
+  });
+
   it("returns null rate for empty buckets and handles no rows", () => {
     expect(aggregate([{ ts_bucket: 0, route: "/", flag_key: "x", flag_on: 1, count: 0, errors: 0 }]).overall[0]!.rate).toBeNull();
     expect(aggregate([])).toEqual({ bucket_ms: 10_000, overall: [], by_route: {}, by_flag: {} });

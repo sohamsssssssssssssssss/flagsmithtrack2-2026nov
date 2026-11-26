@@ -32,4 +32,9 @@ buildApp(async (identity, cohort) => {
   console.log(`Lumen Shop API (DEMO) on http://localhost:${PORTS.shopApi}`);
 });
 
-setInterval(() => telemetry.flush(), REQUEST_BUCKET_MS).unref();
+function flushOnBoundary() {
+  telemetry.flush();
+  setTimeout(flushOnBoundary, REQUEST_BUCKET_MS - (Date.now() % REQUEST_BUCKET_MS)).unref();
+}
+
+flushOnBoundary();

@@ -14,12 +14,12 @@ export interface Metrics {
 const rate = (b: Omit<Bucket, "rate">): Bucket => ({ ...b, rate: b.requests ? b.errors / b.requests : null });
 
 /** Pure aggregation into 10 s buckets: overall error rate and error rate per flag_key x flag_on. */
-export function aggregate(rows: RequestRow[]): Metrics {
+export function aggregate(rows: RequestRow[], alignment = 0): Metrics {
   // Each request is reported once per flag, so the overall count per (bucket, route) is the max over flags, not the sum.
   const perFlag = new Map<string, { requests: number; errors: number }>(); // bucket|route|flag
   const byFlag = new Map<string, Map<number, { requests: number; errors: number }>>(); // flag|on -> bucket
   for (const r of rows) {
-    const ts = Math.floor(r.ts_bucket / BUCKET_MS) * BUCKET_MS;
+    const ts = Math.floor((r.ts_bucket - alignment) / BUCKET_MS) * BUCKET_MS + alignment;
     const k = `${ts}|${r.route}|${r.flag_key}`;
     const a = perFlag.get(k) ?? { requests: 0, errors: 0 };
     a.requests += r.count; a.errors += r.errors; perFlag.set(k, a);

@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc -p .",
     "lint": "tsc -p . --noEmit",
-    "dev": "tsx watch src/index.ts"
+    "dev": "sh -c 'if [ \"$BLAST_REHEARSAL\" = 1 ]; then exec node --import tsx src/index.ts \"$@\"; else exec tsx watch src/index.ts \"$@\"; fi' --"
   },
   "dependencies": {
     "@blast/shared": "workspace:*",
