@@ -1,0 +1,17 @@
+{
+  "project_id": 56400,
+  "environment": {
+    "id": 120633,
+    "name": "Development"
+  },
+  "features": {
+    "new_checkout": 305031,
+    "smart_search": 305032,
+    "promo_banner": 305033,
+    "recs_v2": 305034,
+    "free_shipping_threshold": 305035
+  },
+  "segments": {
+    "beta_cohort": 1204777
+  }
+}

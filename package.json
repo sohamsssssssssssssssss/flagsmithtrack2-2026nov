@@ -1,0 +1,21 @@
+{
+  "name": "blast-radius",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "pnpm --filter @blast/shared --filter @blast/mapper build && pnpm -r --parallel --filter './apps/**' dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "lint": "pnpm -r lint",
+    "seed": "node scripts/seed-flags.mjs",
+    "llm-check": "node scripts/llm-check.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.2"
+  }
+}
