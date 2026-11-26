@@ -1,7 +1,35 @@
-import express from "express";
-import { PORTS } from "@blast/shared";
+import { existsSync } from "node:fs";
+import { loadEnvFile } from "node:process";
+import { PORTS, type FlagSnapshot } from "@blast/shared";
+import { DefaultFlag, Flagsmith } from "flagsmith-nodejs";
+import { buildApp } from "./app.js";
+import { createTelemetry } from "./telemetry.js";
 
-const app = express();
-app.use(express.json());
-app.get("/api/health", (_req, res) => { res.json({ ok: true, demo: true }); });
-app.listen(PORTS.shopApi, () => console.log(`demo-shop api (DEMO) on http://localhost:${PORTS.shopApi}`));
+const env = new URL("../../../../.env", import.meta.url);
+if (existsSync(env)) loadEnvFile(env);
+
+const key = process.env.FLAGSMITH_SERVER_KEY;
+const defaultFlagHandler = () => new DefaultFlag(null, false);
+const client = key ? new Flagsmith({
+  environmentKey: key,
+  enableLocalEvaluation: true,
+  environmentRefreshIntervalSeconds: 5,
+  defaultFlagHandler,
+  requestTimeoutSeconds: 2,
+  retries: 0,
+}) : undefined;
+
+const knownFlags = ["new_checkout", "smart_search", "recs_v2", "promo_banner", "free_shipping_threshold"];
+const telemetry = createTelemetry();
+buildApp(async (identity, cohort) => {
+  const flags = await client?.getIdentityFlags(identity, cohort === undefined ? {} : { cohort });
+  const defaults = knownFlags.map((name) => [name, flags?.getFlag(name) ?? defaultFlagHandler()] as const);
+  const evaluated = (flags?.allFlags() ?? []).map((flag) => [flag.featureName, flag] as const);
+  const snapshot: FlagSnapshot = Object.fromEntries([...defaults, ...evaluated]
+    .map(([name, { enabled, value }]) => [name, { enabled, value: value ?? null }]));
+  return snapshot;
+}, telemetry).listen(PORTS.shopApi, () => {
+  console.log(`Lumen Shop API (DEMO) on http://localhost:${PORTS.shopApi}`);
+});
+
+setInterval(() => telemetry.flush(), 5_000).unref();

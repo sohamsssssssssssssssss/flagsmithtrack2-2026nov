@@ -1,0 +1,8 @@
+{
+  "name": "demo-shop",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @blast/shared build && pnpm --parallel --filter @blast/shop-api --filter @blast/shop-web dev",
+    "test": "pnpm --filter @blast/shared build && vitest run --root ../.. apps/demo-shop"
+  }
+}

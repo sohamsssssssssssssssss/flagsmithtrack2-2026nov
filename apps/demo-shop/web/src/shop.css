@@ -1,0 +1,24 @@
+:root { font-family: system-ui, sans-serif; color: #222820; background: #f7f6f0; }
+body { margin: 0; }
+main { max-width: 1100px; margin: auto; padding: 32px 24px 56px; }
+header, .product-footer, .line-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { font: 700 clamp(2.75rem, 7vw, 5rem)/1 Georgia, serif; letter-spacing: -.06em; margin: 0 0 26px; }
+h2 { font-size: 1.1rem; }
+.badge { font-size: .75rem; font-weight: 800; letter-spacing: .1em; background: #d9e1c9; border-radius: 99px; padding: 6px 10px; }
+.banner { padding: 14px 18px; background: #e0e8d0; border-radius: 10px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .45fr); gap: 24px; }
+.search, .recs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.search input { flex: 1; min-width: 0; }
+input, button { font: inherit; border-radius: 8px; padding: 9px 12px; }
+input { border: 1px solid #808874; color: inherit; background: white; box-sizing: border-box; }
+button { border: 1px solid transparent; color: white; background: #394b33; cursor: pointer; }
+button:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 3px solid #63773d; outline-offset: 3px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+article, aside { border: 1px solid #dddcd0; border-radius: 14px; padding: 14px; background: #fffefa; }
+.product-art { display: grid; place-items: center; background: #edece0; border-radius: 9px; font-size: 3rem; min-height: 130px; }
+article:nth-child(even) .product-art { background: #e6ebd9; }
+aside { align-self: start; padding: 18px; }
+aside form { display: grid; gap: 8px; }
+.line-item { padding: 5px 0; }
+@media (max-width: 700px) { .layout { grid-template-columns: 1fr; } }
