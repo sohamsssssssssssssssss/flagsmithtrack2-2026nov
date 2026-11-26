@@ -9,7 +9,7 @@ function Dashboard() {
   const [tab, setTab] = useState<"overview" | "audit">("overview");
   const [flags, setFlags] = useState<Flag[]>([]);
   const [changes, setChanges] = useState<FlagChange[]>([]);
-  const [metrics, setMetrics] = useState<Metrics>({ overall: [] });
+  const [metrics, setMetrics] = useState<Metrics>({ overall: [], bucket_ms: 10_000 });
   const [details, setDetails] = useState<IncidentDetail[]>([]);
   const [evidence, setEvidence] = useState<Evidence | null>(null);
   const [simulated, setSimulated] = useState(false);
@@ -102,7 +102,7 @@ function Dashboard() {
           })}</ul> : <p className="empty-line">{loading ? "Loading flags…" : "No flags reported."}</p>}
         </section>
         <div className="center">
-          <TrafficChart buckets={metrics.overall} changes={changes} now={now} />
+          <TrafficChart buckets={metrics.overall} bucketMs={metrics.bucket_ms} changes={changes} now={now} />
           <section className="panel changes" aria-labelledby="changes-title">
             <div className="panel-heading"><h2 id="changes-title">Recent changes</h2></div>
             {changes.length ? <ol>{changes.slice(0, 3).map((change, index) =>

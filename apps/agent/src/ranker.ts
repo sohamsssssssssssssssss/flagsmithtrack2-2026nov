@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import type { FlagSnapshot } from "@blast/shared";
 import { BLAST_DIR, ROOT } from "./config.js";
 import type { RequestRow } from "./metrics.js";
+import { fisherGreater } from "./fisher.js";
 import { totals } from "./detector.js";
 
 export type Failure = { route: string; stack: string; flags_json: string };
@@ -50,9 +51,13 @@ export function rankFlags(rows: RequestRow[], failures: Failure[], changes: Rece
     const on = cohort(true), off = cohort(false);
     const pooled = (on.errors + off.errors) / (on.requests + off.requests);
     const standardError = Math.sqrt(pooled * (1 - pooled) * (1 / on.requests + 1 / off.requests));
-    const z = on.requests >= 30 && off.requests >= 30 && standardError > 0
-      ? (on.rate! - off.rate!) / standardError : null;
-    const split = Math.max(0, Math.min(1, (z ?? 0) / 3));
+    const comparable = on.rate !== null && off.rate !== null
+      && on.errors <= on.requests && off.errors <= off.requests;
+    const higher = comparable && on.rate! > off.rate!;
+    const small = Math.min(on.errors, off.errors, on.requests - on.errors, off.requests - off.errors) < 30;
+    const z = comparable && !small && standardError > 0 ? (on.rate! - off.rate!) / standardError : null;
+    const p = comparable && small ? fisherGreater(on.requests, on.errors, off.requests, off.errors) : null;
+    const split = Number(higher && (p !== null ? p < 0.001 : z !== null && z > 3.090232306));
     const paths = new Set((Object.hasOwn(files, flag) ? files[flag]! : []).map(projectFile));
     const matched = frames.filter((frame) => paths.has(frame)).length;
     const overlap = frames.length ? matched / frames.length : 0;
@@ -62,7 +67,7 @@ export function rankFlags(rows: RequestRow[], failures: Failure[], changes: Rece
     const recency = minutes === null ? 0 : Math.exp(-minutes / 10);
     const pct = (rate: number | null) => rate === null ? "unavailable" : `${(rate * 100).toFixed(1)}%`;
     return {
-      flag, score: 0.6 * split + 0.3 * overlap + 0.1 * recency, on, off, z,
+      flag, score: 0.6 * split + 0.3 * overlap + 0.1 * recency, on, off, z, p, test: comparable ? (small ? "fisher" : "z") : null,
       split, overlap, matched_frames: matched, failing_frames: frames.length,
       map: paths.size ? "mapped" : "no map", recency, minutes_since_change: minutes,
       reason: `${flag} was on for ${on.requests} of ${on.requests + off.requests} requests on failing routes, with ${pct(on.rate)} errors on versus ${pct(off.rate)} off${minutes === null ? "" : `, ${minutes.toFixed(1)} minutes after its last change`}${paths.size ? "" : " (no map)"}.`,

@@ -53,3 +53,15 @@ At incident opening, the flag-on side had 26 requests, so ranking stayed ambiguo
 The agent ranks on/off requests on the failing routes. It bounds positive z evidence at (z=3) and excludes library frames from code overlap. Without a map the code-overlap component is zero. For ambiguous incidents, `POST /api/incidents/:id/propose` with `{"flag":"new_checkout"}` lets a reviewer select a ranked flag for a separately approved proposal.
 
 The four completed recovery buckets contained 949 requests and zero errors. Recovery was confirmed 147.295 seconds after the verified disable, including bucket alignment and telemetry delivery. The follow-up `demo-reset` verified both the default and beta override were still off. Simulated traffic was stopped.
+
+## D2-D speed trials at default traffic
+
+Each run used a fresh agent database, a clean pre-break traffic period, and the existing checkout map. The traffic command used 300 users, 8 requests per second, 20% discount entry, and a 50% beta assignment. Times are measured from the successful break PATCH response. Each trial stopped at proposal creation or at an 85-second cutoff, then verified a reset.
+
+| Run | First checkout error | Incident | Proposal | Final Fisher p |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 3.094 s | 38.694 s | None within 85 s | 0.001809 |
+| 2 | 5.775 s | 33.848 s | 64.686 s | 0.000274 |
+| 3 | 10.989 s | 31.862 s | 52.517 s | 0.000761 |
+
+All three incidents scoped to `/api/checkout`. The **25-second incident and 35-second proposal targets were missed in all three trials**. At default settings only a fraction of the 8 requests per second are checkouts, and roughly one in ten checkouts combines the beta cohort with a discount. The first error took up to 11 seconds to arrive. Two completed 10-second buckets, five errors, and Fisher significance can require additional traffic even when the off cohort has zero errors. Run 1 stayed ambiguous because its p-value remained above 0.001. The two-minute recovery watch remains unchanged.

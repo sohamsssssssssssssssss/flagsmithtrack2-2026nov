@@ -3,7 +3,7 @@ import { loadEnvFile } from "node:process";
 import { PORTS, type FlagSnapshot } from "@blast/shared";
 import { DefaultFlag, Flagsmith } from "flagsmith-nodejs";
 import { buildApp } from "./app.js";
-import { createTelemetry } from "./telemetry.js";
+import { createTelemetry, REQUEST_BUCKET_MS } from "./telemetry.js";
 
 const env = new URL("../../../../.env", import.meta.url);
 if (existsSync(env)) loadEnvFile(env);
@@ -32,4 +32,4 @@ buildApp(async (identity, cohort) => {
   console.log(`Lumen Shop API (DEMO) on http://localhost:${PORTS.shopApi}`);
 });
 
-setInterval(() => telemetry.flush(), 5_000).unref();
+setInterval(() => telemetry.flush(), REQUEST_BUCKET_MS).unref();

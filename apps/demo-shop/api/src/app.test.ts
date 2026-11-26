@@ -4,7 +4,7 @@ import request from "supertest";
 import { expect, it, vi } from "vitest";
 import { buildApp } from "./app.js";
 import { applyDiscount } from "./checkout/applyDiscount.js";
-import { createTelemetry } from "./telemetry.js";
+import { createTelemetry, REQUEST_BUCKET_MS } from "./telemetry.js";
 
 it("throws a TypeError in the migrated discount path", () => {
   expect(() => applyDiscount(4800, "LUMEN10")).toThrow(TypeError);
@@ -39,7 +39,7 @@ it("checks out on the old path and sends valid error events and per-flag request
       .expect(200, { total: 4800 });
     expect(evaluate.mock.calls).toEqual([["off", undefined], ["on", "demo"], ["on", undefined]]);
 
-    telemetry.flush(Date.now() + 5_000);
+    telemetry.flush(Date.now() + REQUEST_BUCKET_MS);
     await vi.waitFor(() => {
       const requestCount = received.filter(({ path }) => path === INGEST.requests)
         .flatMap(({ body: payload }) => RequestBatch.parse(payload).rows)
@@ -61,7 +61,7 @@ it("checks out on the old path and sends valid error events and per-flag request
     const totals = new Map<boolean, number[]>();
     for (const batch of batches) {
       expect(batch.route).toBe("/api/checkout");
-      expect(batch.ts_bucket % 5_000).toBe(0);
+      expect(batch.ts_bucket % REQUEST_BUCKET_MS).toBe(0);
       for (const row of batch.rows.filter(({ flag_key }) => flag_key === "new_checkout")) {
         const [count = 0, errors = 0] = totals.get(row.flag_on) ?? [];
         totals.set(row.flag_on, [count + row.count, errors + row.errors]);

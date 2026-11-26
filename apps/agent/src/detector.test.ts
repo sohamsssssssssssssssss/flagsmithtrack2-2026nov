@@ -1,25 +1,32 @@
 import { expect, it } from "vitest";
-import { detectSpike, recovered } from "./detector.js";
+import { detectSpike, recovered, RECOVERY_MS } from "./detector.js";
+import { BUCKET_MS } from "./metrics.js";
 
 const end = 900_000;
 const bucket = (ts: number, requests: number, errors: number) =>
   ({ ts, requests, errors, rate: requests ? errors / requests : null });
 
-it("requires twenty errors, strictly above 2%, and at least triple the preceding baseline", () => {
-  const baseline = bucket(end - 90_000, 150, 2);
-  const detect = (requests: number, errors: number) =>
-    detectSpike([baseline, bucket(end - 60_000, requests / 2, 10),
-      bucket(end - 30_000, requests / 2, errors - 10)], end);
-  expect(detect(500, 20)?.recent).toEqual({ requests: 500, errors: 20, rate: 0.04 });
-  expect(detect(500, 19)).toBeNull();
-  expect(detect(510, 20)).toBeNull();
-  expect(detectSpike([bucket(end - 90_000, 5_000, 0), bucket(end - 30_000, 1_000, 20)], end)).toBeNull();
-  expect(detectSpike([bucket(end - 30_000, 100, 24)], end)).toBeNull();
+it("requires at least five errors and at least 5% in each of two consecutive buckets", () => {
+  const baseline = bucket(end - 30_000, 150, 0);
+  const detect = (a: number, b: number) =>
+    detectSpike([baseline, bucket(end - 20_000, 40, a), bucket(end - 10_000, 40, b)], end);
+  expect(detect(2, 3)?.recent).toEqual({ requests: 80, errors: 5, rate: 0.0625 });
+  expect(detect(2, 2)).toBeNull();
+  expect(detect(0, 5)).toBeNull();
+  expect(detectSpike([baseline, bucket(end - 10_000, 40, 5)], end)).toBeNull();
+  expect(detectSpike([bucket(end - 20_000, 40, 3), bucket(end - 10_000, 40, 3)], end)).toBeNull();
 });
 
-it("requires four healthy buckets with traffic and handles a clean baseline", () => {
-  const clean = [4, 3, 2, 1].map((n) => bucket(end - n * 30_000, 100, 0));
+it("requires triple the baseline when the route already fails at 1% or higher", () => {
+  const recent = [bucket(end - 20_000, 50, 3), bucket(end - 10_000, 50, 3)];
+  expect(detectSpike([bucket(end - 30_000, 100, 2), ...recent], end)).not.toBeNull();
+  expect(detectSpike([bucket(end - 30_000, 100, 3), ...recent], end)).toBeNull();
+});
+
+it("keeps the two-minute recovery period with ten-second buckets", () => {
+  const clean = Array.from({ length: RECOVERY_MS / BUCKET_MS },
+    (_, index) => bucket(end - RECOVERY_MS + index * BUCKET_MS, 100, 0));
   expect(recovered(clean, end, 0)).toBe(true);
   expect(recovered(clean.slice(1), end, 0)).toBe(false);
-  expect(recovered([...clean.slice(0, 3), bucket(end - 30_000, 100, 1)], end, 0)).toBe(false);
+  expect(recovered([...clean.slice(0, -1), bucket(end - BUCKET_MS, 100, 1)], end, 0)).toBe(false);
 });

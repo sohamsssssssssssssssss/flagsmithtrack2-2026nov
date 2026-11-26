@@ -1,5 +1,7 @@
 import { AGENT_URL, INGEST, type ErrorEvent, type FlagSnapshot, type RequestBatch } from "@blast/shared";
 
+export const REQUEST_BUCKET_MS = 2_000;
+
 export function createTelemetry(agentUrl = AGENT_URL) {
   const buckets = new Map<number, Map<string, Map<string, RequestBatch["rows"][number]>>>();
 
@@ -15,7 +17,7 @@ export function createTelemetry(agentUrl = AGENT_URL) {
   return {
     error: (event: ErrorEvent) => post(INGEST.error, event),
     record(ts: number, route: string, flags: FlagSnapshot, failed: boolean) {
-      const bucket = Math.floor(ts / 5_000) * 5_000;
+      const bucket = Math.floor(ts / REQUEST_BUCKET_MS) * REQUEST_BUCKET_MS;
       const routes = buckets.get(bucket) ?? new Map();
       buckets.set(bucket, routes);
       const rows = routes.get(route) ?? new Map();
@@ -30,7 +32,7 @@ export function createTelemetry(agentUrl = AGENT_URL) {
     },
     flush(now = Date.now()) {
       for (const [ts_bucket, routes] of buckets) {
-        if (ts_bucket + 5_000 > now) continue;
+        if (ts_bucket + REQUEST_BUCKET_MS > now) continue;
         buckets.delete(ts_bucket);
         for (const [route, rows] of routes) {
           if (rows.size) post(INGEST.requests, { ts_bucket, route, rows: [...rows.values()] });

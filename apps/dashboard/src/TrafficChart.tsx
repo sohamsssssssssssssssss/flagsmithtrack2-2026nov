@@ -6,12 +6,12 @@ export function changeLabel(change: FlagChange) {
   return `${change.flag_key} ${enabled ? "ON" : "OFF"}`;
 }
 
-export function TrafficChart({ buckets, changes, now }: { buckets: Bucket[]; changes: FlagChange[]; now: number }) {
-  const end = Math.ceil(now / 30_000) * 30_000;
+export function TrafficChart({ buckets, changes, now, bucketMs }: { buckets: Bucket[]; changes: FlagChange[]; now: number; bucketMs: number }) {
+  const end = Math.ceil(now / bucketMs) * bucketMs;
   const start = end - 600_000;
   const series = new Map(buckets.map((b) => [b.ts, b.rate]));
-  const points = Array.from({ length: 21 }, (_, index) => {
-    const ts = start + index * 30_000;
+  const points = Array.from({ length: 600_000 / bucketMs + 1 }, (_, index) => {
+    const ts = start + index * bucketMs;
     return { ts, rate: series.get(ts) ?? null };
   });
   const inWindow = buckets.filter((b) => b.ts >= start);
@@ -21,7 +21,7 @@ export function TrafficChart({ buckets, changes, now }: { buckets: Bucket[]; cha
   return <section className="panel traffic" aria-labelledby="traffic-title">
     <div className="panel-heading"><h2 id="traffic-title">Error rate</h2><span className="legend"><i /> Flag change</span></div>
     <div className="chart-summary">
-      <div><strong>{percent(latest?.rate)}</strong><span>Latest 30-second bucket</span></div>
+      <div><strong>{percent(latest?.rate)}</strong><span>Latest {bucketMs / 1000}-second bucket</span></div>
       <div className="chart-totals"><span><b>{inWindow.reduce((n, b) => n + b.requests, 0).toLocaleString()}</b> requests</span>
         <span><b>{inWindow.reduce((n, b) => n + b.errors, 0).toLocaleString()}</b> errors</span></div>
     </div>
@@ -44,6 +44,6 @@ export function TrafficChart({ buckets, changes, now }: { buckets: Bucket[]; cha
         </AreaChart>
       </ResponsiveContainer>
     </div>
-    <div className="chart-footer"><span>LAST 10 MINUTES</span><span>30S BUCKETS</span></div>
+    <div className="chart-footer"><span>LAST 10 MINUTES</span><span>{bucketMs / 1000}S BUCKETS</span></div>
   </section>;
 }

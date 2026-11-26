@@ -6,7 +6,7 @@ import { aggregate, BUCKET_MS, type RequestRow } from "./metrics.js";
 import { DecisionError, type buildProposals } from "./proposals.js";
 import { rankFlags, readFlagFiles, type Failure, type RecentChange } from "./ranker.js";
 
-type Spike = NonNullable<ReturnType<typeof detectSpike>>;
+type Spike = NonNullable<ReturnType<typeof detectSpike>> & { route?: string };
 type Ranking = ReturnType<typeof rankFlags>;
 type IncidentRow = {
   id: number; opened_ts: number; closed_ts: number | null; status: string; top_flag: string | null;
@@ -17,7 +17,8 @@ const decode = ({ ranking_json, evidence_json, ...row }: IncidentRow) =>
 
 export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposals>, bus: EventEmitter,
   log = audit, now = Date.now) {
-  const interval = 5_000;
+  const interval = 1_000;
+  let evaluatedEnd = -1;
   const requests = db.prepare("SELECT * FROM requests WHERE ts_bucket>=? AND ts_bucket<?");
   const failures = db.prepare("SELECT route, stack, flags_json FROM errors WHERE ts>=? AND ts<?");
   const changes = db.prepare("SELECT ts, flag_key FROM flag_changes WHERE ts>=? AND ts<=? ORDER BY ts DESC, id DESC");
@@ -40,10 +41,16 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
 
   async function evaluate() {
     // Shop batches can arrive up to one flush interval after a bucket ends.
-    const end = Math.floor((now() - 2 * interval) / BUCKET_MS) * BUCKET_MS;
+    const end = Math.floor((now() - 2_500) / BUCKET_MS) * BUCKET_MS;
+    if (end === evaluatedEnd) return;
+    evaluatedEnd = end;
     const rows = requests.all(end - 900_000, end) as RequestRow[];
-    const { overall } = aggregate(rows);
-    const recent = detectSpike(overall, end);
+    const { overall, by_route } = aggregate(rows);
+    const routeSpikes = Object.entries(by_route).flatMap(([route, buckets]) => {
+      const spike = detectSpike(buckets, end);
+      return spike ? [{ route, ...spike }] : [];
+    }).sort((a, b) => b.recent.rate! - a.recent.rate!);
+    const recent = routeSpikes[0] ?? detectSpike(overall, end);
     let open = db.prepare("SELECT * FROM incidents WHERE status='open'").get() as IncidentRow | undefined;
     const lastClosed = (db.prepare("SELECT MAX(closed_ts) AS ts FROM incidents").get() as { ts: number | null }).ts;
     if (!open && recent && (lastClosed === null || recent.start >= lastClosed)) {
@@ -57,21 +64,23 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
     if (open) {
       const incident = decode(open);
       const baseline = incident.evidence.baseline.rate!;
-      if (end - RECOVERY_MS >= incident.evidence.end && recovered(overall, end, baseline)) {
+      const buckets = incident.evidence.route ? by_route[incident.evidence.route] ?? [] : overall;
+      if (end - RECOVERY_MS >= incident.evidence.end && recovered(buckets, end, baseline)) {
         const ts = now();
         db.prepare("UPDATE incidents SET status='closed',closed_ts=? WHERE id=?").run(ts, open.id);
         db.prepare("UPDATE proposals SET status='cancelled',decision_ts=? WHERE incident_id=? AND status='pending'").run(ts, open.id);
         log("incident_closed", { id: open.id, ts });
         bus.emit("incident_closed", { id: open.id, closed_ts: ts });
-      } else if (!db.prepare("SELECT 1 FROM proposals WHERE incident_id=?").get(open.id)) {
+      } else {
         const start = incident.evidence.start;
-        const errors = failures.all(start, end) as Failure[];
+        const errors = (failures.all(start, end) as Failure[])
+          .filter((failure) => !incident.evidence.route || failure.route === incident.evidence.route);
         const ranked = rankFlags(rows.filter((row) => row.ts_bucket >= start), errors,
-          changes.all(incident.evidence.end - 1_800_000, incident.evidence.end) as RecentChange[],
-          incident.evidence.end, readFlagFiles());
+          changes.all(incident.evidence.end - 1_800_000, incident.opened_ts) as RecentChange[],
+          incident.opened_ts, readFlagFiles());
         db.prepare("UPDATE incidents SET top_flag=?,ranking_json=? WHERE id=?")
           .run(ranked.ranking[0]?.flag ?? null, JSON.stringify(ranked), open.id);
-        if (ranked.confidence === "confident") {
+        if (ranked.confidence === "confident" && !db.prepare("SELECT 1 FROM proposals WHERE incident_id=?").get(open.id)) {
           await proposals.create(open.id, ranked.ranking[0]!).catch((error) => {
             log("proposal_creation_failed", { incident_id: open!.id, error: error instanceof DecisionError ? error.message : "Internal error" });
           });
@@ -85,8 +94,9 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
     for (const action of watching) {
       const recoveryEnd = Math.ceil(action.verified_ts / BUCKET_MS) * BUCKET_MS + RECOVERY_MS;
       if (end < recoveryEnd) continue;
-      const baseline = (JSON.parse(action.evidence_json) as Spike).baseline.rate!;
-      const outcome = recovered(overall, recoveryEnd, baseline) ? "recovered" : "not_recovered";
+      const evidence = JSON.parse(action.evidence_json) as Spike;
+      const buckets = evidence.route ? by_route[evidence.route] ?? [] : overall;
+      const outcome = recovered(buckets, recoveryEnd, evidence.baseline.rate!) ? "recovered" : "not_recovered";
       db.prepare("UPDATE actions SET outcome=?,outcome_ts=? WHERE id=?").run(outcome, now(), action.id);
       const event = { id: action.id, incident_id: action.incident_id, outcome };
       log("action_outcome", event);

@@ -15,13 +15,15 @@ describe("aggregate", () => {
       { ts: 0, requests: 100, errors: 21, rate: 0.21 },
       { ts: 30_000, requests: 10, errors: 0, rate: 0 },
     ]);
+    expect(m.by_route["/checkout"]).toEqual([{ ts: 0, requests: 100, errors: 21, rate: 0.21 }]);
     expect(m.by_flag.new_checkout!.on).toEqual([{ ts: 0, requests: 40, errors: 20, rate: 0.5 }]);
+    expect(m.by_route["/checkout"]).toEqual([{ ts: 0, requests: 100, errors: 21, rate: 0.21 }]);
     expect(m.by_flag.new_checkout!.off[0]!.rate).toBeCloseTo(1 / 60);
     expect(m.by_flag.smart_search!.off).toEqual([]);
   });
 
   it("returns null rate for empty buckets and handles no rows", () => {
     expect(aggregate([{ ts_bucket: 0, route: "/", flag_key: "x", flag_on: 1, count: 0, errors: 0 }]).overall[0]!.rate).toBeNull();
-    expect(aggregate([])).toEqual({ bucket_ms: 30_000, overall: [], by_flag: {} });
+    expect(aggregate([])).toEqual({ bucket_ms: 10_000, overall: [], by_route: {}, by_flag: {} });
   });
 });

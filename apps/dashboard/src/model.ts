@@ -3,7 +3,7 @@ export type { FlagChange };
 
 export type Flag = { flag_key: string; state: FlagLiveState | null; last_change_ts: number | null };
 export type Bucket = { ts: number; requests: number; errors: number; rate: number | null };
-export type Metrics = { overall: Bucket[] };
+export type Metrics = { overall: Bucket[]; bucket_ms: number };
 type Cohort = { requests: number; errors: number; rate: number | null };
 export type Candidate = {
   flag: string; score: number; reason: string; on: Cohort; off: Cohort;

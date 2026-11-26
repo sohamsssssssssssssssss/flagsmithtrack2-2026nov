@@ -92,7 +92,7 @@ it("rejects an approval after a human rejects the proposal", async () => {
   } finally { await f.app.close(); f.db.close(); }
 });
 
-it.each([0, 1])("tracks the action through four full buckets with %i post-write errors", async (errors) => {
+it.each([0, 1])("tracks the action through twelve full buckets with %i post-write errors", async (errors) => {
   const f = fixture();
   try {
     const proposal = await f.proposals.create(1, f.evidence);
@@ -102,11 +102,11 @@ it.each([0, 1])("tracks the action through four full buckets with %i post-write 
     expect(f.writes()).toBe(1);
     const insert = f.db.prepare(`INSERT INTO requests(ts_bucket,route,flag_key,flag_on,count,errors)
       VALUES (?,'/checkout','checkout',0,50,?)`);
-    for (let ts = 1_020_000; ts < 1_140_000; ts += 30_000) insert.run(ts, ts === 1_110_000 ? errors : 0);
-    f.advance(149_000);
+    for (let ts = 1_000_000; ts < 1_120_000; ts += 10_000) insert.run(ts, ts === 1_110_000 ? errors : 0);
+    f.advance(122_499);
     await f.incidents.tick();
     expect(f.incidents.get(1).actions[0]?.outcome).toBe("watching");
-    f.advance(1_000);
+    f.advance(1);
     await f.incidents.tick();
     const incident = f.incidents.get(1);
     expect(incident.actions[0]?.outcome).toBe(errors ? "not_recovered" : "recovered");

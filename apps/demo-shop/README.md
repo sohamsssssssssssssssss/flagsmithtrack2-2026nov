@@ -29,4 +29,4 @@ curl -sS http://localhost:4100/api/checkout \
   --data '{"items":[{"id":"glow","quantity":1}],"discountCode":"LUMEN10"}'
 ```
 
-Cart and checkout accept item IDs from `GET /api/products` and integer quantities from 1 to 99. The cart endpoint prices the supplied cart, and the storefront keeps its cart in memory. API prices and totals are in cents. The free-shipping flag value is in dollars. Request telemetry groups completed requests into five-second buckets and counts HTTP 5xx responses as errors.
+Cart and checkout accept item IDs from `GET /api/products` and integer quantities from 1 to 99. The cart endpoint prices the supplied cart, and the storefront keeps its cart in memory. API prices and totals are in cents. The free-shipping flag value is in dollars. Request telemetry groups completed requests into two-second buckets and counts HTTP 5xx responses as errors.

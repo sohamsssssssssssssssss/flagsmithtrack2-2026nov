@@ -1,6 +1,6 @@
 import { BUCKET_MS, type Bucket } from "./metrics.js";
 
-export const RECOVERY_MS = 4 * BUCKET_MS;
+export const RECOVERY_MS = 120_000;
 
 export function totals(buckets: Pick<Bucket, "requests" | "errors">[]) {
   const requests = buckets.reduce((sum, row) => sum + row.requests, 0);
@@ -11,9 +11,11 @@ export function totals(buckets: Pick<Bucket, "requests" | "errors">[]) {
 export function detectSpike(buckets: Bucket[], end: number) {
   const start = end - 2 * BUCKET_MS;
   const baseline = totals(buckets.filter((b) => b.ts >= start - 600_000 && b.ts < start));
-  const recent = totals(buckets.filter((b) => b.ts >= start && b.ts < end));
-  return baseline.rate !== null && recent.rate !== null && recent.errors >= 20
-    && recent.rate > 0.02 && recent.rate >= 3 * baseline.rate
+  const window = buckets.filter((b) => b.ts >= start && b.ts < end);
+  const recent = totals(window);
+  return baseline.rate !== null && recent.rate !== null && recent.errors >= 5
+    && (baseline.rate < 0.01 || recent.rate >= 3 * baseline.rate)
+    && window.length === 2 && window.every((b) => b.rate !== null && b.rate >= 0.05)
     ? { start, end, baseline, recent } : null;
 }
 

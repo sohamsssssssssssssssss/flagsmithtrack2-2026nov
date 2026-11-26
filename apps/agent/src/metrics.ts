@@ -1,18 +1,19 @@
 import type { DB } from "./db.js";
 
-export const BUCKET_MS = 30_000;
+export const BUCKET_MS = 10_000;
 
 export interface RequestRow { ts_bucket: number; route: string; flag_key: string; flag_on: number | boolean; count: number; errors: number }
 export interface Bucket { ts: number; requests: number; errors: number; rate: number | null }
 export interface Metrics {
   bucket_ms: number;
   overall: Bucket[];
+  by_route: Record<string, Bucket[]>;
   by_flag: Record<string, { on: Bucket[]; off: Bucket[] }>;
 }
 
 const rate = (b: Omit<Bucket, "rate">): Bucket => ({ ...b, rate: b.requests ? b.errors / b.requests : null });
 
-/** Pure aggregation into 30 s buckets: overall error rate and error rate per flag_key x flag_on. */
+/** Pure aggregation into 10 s buckets: overall error rate and error rate per flag_key x flag_on. */
 export function aggregate(rows: RequestRow[]): Metrics {
   // Each request is reported once per flag, so the overall count per (bucket, route) is the max over flags, not the sum.
   const perFlag = new Map<string, { requests: number; errors: number }>(); // bucket|route|flag
@@ -34,8 +35,13 @@ export function aggregate(rows: RequestRow[]): Metrics {
     if (!cur || v.requests > cur.requests) route.set(rk, v);
   }
   const overall = new Map<number, { requests: number; errors: number }>();
+  const routeBuckets = new Map<string, Bucket[]>();
   for (const [k, v] of route) {
     const ts = Number(k.slice(0, k.indexOf("|")));
+    const name = k.slice(k.indexOf("|") + 1);
+    const buckets = routeBuckets.get(name) ?? [];
+    buckets.push(rate({ ts, ...v }));
+    routeBuckets.set(name, buckets);
     const o = overall.get(ts) ?? { requests: 0, errors: 0 };
     o.requests += v.requests; o.errors += v.errors; overall.set(ts, o);
   }
@@ -46,7 +52,9 @@ export function aggregate(rows: RequestRow[]): Metrics {
     const [flag, side] = fk.split("|") as [string, "on" | "off"];
     (by_flag[flag] ??= { on: [], off: [] })[side] = series(m);
   }
-  return { bucket_ms: BUCKET_MS, overall: series(overall), by_flag };
+  const by_route = Object.fromEntries([...routeBuckets].map(([name, buckets]) =>
+    [name, buckets.sort((a, b) => a.ts - b.ts)]));
+  return { bucket_ms: BUCKET_MS, overall: series(overall), by_route, by_flag };
 }
 
 export function metrics(db: DB, windowSec: number, now = Date.now()): Metrics & { error_events: { ts: number; count: number }[] } {
