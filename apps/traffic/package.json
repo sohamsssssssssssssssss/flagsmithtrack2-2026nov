@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc -p .",
     "lint": "tsc -p . --noEmit",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "start": "tsx src/index.ts"
   },
   "dependencies": { "@blast/shared": "workspace:*" }
 }
