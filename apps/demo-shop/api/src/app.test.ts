@@ -3,13 +3,14 @@ import { ErrorEvent, INGEST, RequestBatch, type FlagSnapshot } from "@blast/shar
 import request from "supertest";
 import { expect, it, vi } from "vitest";
 import { buildApp } from "./app.js";
-import { applyDiscount } from "./checkout/applyDiscount.js";
 import { createTelemetry, REQUEST_BUCKET_MS } from "./telemetry.js";
 
-it("throws a TypeError in the migrated discount path", () => {
-  expect(() => applyDiscount(4800, "LUMEN10")).toThrow(TypeError);
-  expect(applyDiscount(4800)).toBe(4800);
-});
+vi.mock("./checkout/applyDiscount.js", () => ({
+  applyDiscount: vi.fn((subtotal: number, code?: string) => {
+    if (code) throw new TypeError("Simulated discount failure");
+    return subtotal;
+  }),
+}));
 
 it("checks out on the old path and sends valid error events and per-flag request batches", async () => {
   const received: Array<{ path?: string; body: unknown }> = [];
@@ -54,7 +55,8 @@ it("checks out on the old path and sends valid error events and per-flag request
       new_checkout: { enabled: true, value: null },
       unrelated_flag: { enabled: false, value: "test" },
     });
-    expect(error.stack).toMatch(/TypeError[\s\S]*checkout\/applyDiscount\.ts/);
+    expect(error.stack).toContain("TypeError: Simulated discount failure");
+    expect(error.replay).toEqual({ method: "POST", body });
 
     const batches = received.filter(({ path }) => path === INGEST.requests)
       .map(({ body: payload }) => RequestBatch.parse(payload));

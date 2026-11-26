@@ -35,6 +35,11 @@ const MIGRATIONS = [
       hold_ms INTEGER NOT NULL, started_ts INTEGER NOT NULL, reason TEXT, rollback_checked INTEGER NOT NULL DEFAULT 0
    );
    CREATE UNIQUE INDEX one_running_rollout_per_flag ON rollouts(flag) WHERE status='active';`,
+  `ALTER TABLE errors ADD COLUMN replay_json TEXT;
+   CREATE TABLE fix_jobs(
+     proposal_id INTEGER PRIMARY KEY REFERENCES proposals(id), status TEXT NOT NULL,
+     model TEXT, diff TEXT, pr_url TEXT, steps_json TEXT NOT NULL DEFAULT '[]', reason TEXT
+   );`,
 ];
 
 export function openDb(path: string): DB {

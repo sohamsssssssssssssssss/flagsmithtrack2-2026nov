@@ -1,3 +1,4 @@
+import type { buildFixJobs } from "./fix-jobs.js";
 import type { buildRollouts } from "./rollouts.js";
 import type { createFlagMap } from "./flagmap.js";
 import type { buildIncidents } from "./incidents.js";
@@ -14,12 +15,13 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
   incidents: ReturnType<typeof buildIncidents>; proposals: ReturnType<typeof buildProposals>;
   flagMap?: ReturnType<typeof createFlagMap>;
   rollouts?: ReturnType<typeof buildRollouts>;
+  fixes?: ReturnType<typeof buildFixJobs>;
 }) {
   const app = Fastify({ logger: false });
   bus.setMaxListeners(0);
 
-  const insertError = db.prepare(`INSERT INTO errors(ts, identity, route, message, stack, flags_json, source, simulated)
-    VALUES (@ts, @identity, @route, @message, @stack, @flags_json, @source, @simulated)`);
+  const insertError = db.prepare(`INSERT INTO errors(ts, identity, route, message, stack, flags_json, source, simulated, replay_json)
+    VALUES (@ts, @identity, @route, @message, @stack, @flags_json, @source, @simulated, @replay_json)`);
   const insertReq = db.prepare(`INSERT INTO requests(ts_bucket, route, flag_key, flag_on, count, errors)
     VALUES (?, ?, ?, ?, ?, ?)`);
 
@@ -40,7 +42,8 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
     if (!r.success) return reply.code(400).send({ error: r.error.issues });
     const events = Array.isArray(r.data) ? r.data : [r.data];
     db.transaction(() => events.forEach((e) =>
-      insertError.run({ ...e, flags_json: JSON.stringify(e.flags), simulated: e.simulated ? 1 : 0 })))();
+      insertError.run({ ...e, flags_json: JSON.stringify(e.flags), simulated: e.simulated ? 1 : 0,
+        replay_json: e.simulated && e.source === "server" && e.route === "/api/checkout" && e.replay ? JSON.stringify(e.replay) : null })))();
     dirty = true;
     return reply.code(202).send({ accepted: events.length });
   });
@@ -83,7 +86,7 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
       ({ ...item, rollout_status: workflow.rollouts?.status(item.id) ?? null })));
     app.get<{ Params: { id: string } }>("/api/incidents/:id", (req) => {
       const id = Number(req.params.id);
-      return { ...incidents.get(id), rollout: workflow.rollouts?.get(id) ?? null };
+      return { ...incidents.get(id), rollout: workflow.rollouts?.get(id) ?? null, fix: workflow.fixes?.get(id) ?? null };
     });
     if (workflow.rollouts) {
       const rollouts = workflow.rollouts;
@@ -101,7 +104,10 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
         schema: { body: { type: "object", required: ["approver"], properties: {
           approver: { type: "string", pattern: "\\S", maxLength: 200 },
         } } },
-      }, (req) => proposals[decision](Number(req.params.id), req.body.approver.trim()));
+      }, (req) => {
+        const id = Number(req.params.id), approver = req.body.approver.trim();
+        return workflow.fixes?.isFix(id) ? workflow.fixes[decision](id, approver) : proposals[decision](id, approver);
+      });
     }
   }
 

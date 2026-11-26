@@ -126,7 +126,7 @@ function Dashboard() {
             const action = item.actions.find((entry) => entry.proposal_id === proposal.id);
             return <tr key={proposal.id}><td>#{proposal.id}</td><td><code>{proposal.flag}</code></td>
               <td>{new Date(proposal.created).toLocaleString()}</td><td>{proposal.approver ?? "—"}</td>
-              <td>{proposal.status}</td><td>{action ? `#${action.id} · ${proposal.kind === "rollout_stage" ? `Rollout ${proposal.stage}%` : "Disable flag"}` : "—"}</td>
+              <td>{proposal.status}</td><td>{action ? `#${action.id} · ${proposal.kind === "rollout_stage" ? `Rollout ${proposal.stage}%` : proposal.kind === "fix_pr" ? "Code fix" : "Disable flag"}` : "—"}</td>
               <td><span className={`badge ${action?.outcome === "recovered" ? "green" : action?.outcome === "PARTIAL" ? "red" : ""}`}>{action?.outcome.replaceAll("_", " ") ?? "—"}</span></td></tr>;
           }))}
           {details.every((item) => item.proposals.length === 0) && <tr><td colSpan={7} className="empty-line">No proposals recorded.</td></tr>}</tbody></table>

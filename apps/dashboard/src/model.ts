@@ -29,7 +29,12 @@ export type Rollout = {
     gate: { on: Cohort; off: Cohort; control: string } | null }[];
   rollback: Proposal | null;
 };
-export type IncidentDetail = Incident & { rollout?: Rollout | null; proposal: Proposal | null; proposals: Proposal[]; actions: Action[] };
+export type FixJob = {
+  id: number; status: string; proposal_status: string; expires_ts: number;
+  model: string | null; diff: string | null; pr_url: string | null; reason: string | null;
+  steps: { name: string; attempt: number; status: string; ms?: number }[];
+};
+export type IncidentDetail = Incident & { fix?: FixJob | null; rollout?: Rollout | null; proposal: Proposal | null; proposals: Proposal[]; actions: Action[] };
 export type Evidence = { simulated: boolean; route?: string; frame?: string };
 
 export const percent = (rate: number | null | undefined) => rate == null ? "—" : `${(rate * 100).toFixed(1)}%`;

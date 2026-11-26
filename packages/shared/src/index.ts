@@ -14,6 +14,18 @@ export type FlagState = z.infer<typeof FlagState>;
 export const FlagSnapshot = z.record(z.string(), FlagState);
 export type FlagSnapshot = z.infer<typeof FlagSnapshot>;
 
+export const CheckoutReplay = z.object({
+  method: z.literal("POST"),
+  body: z.object({
+    items: z.array(z.object({
+      id: z.string().regex(/^[a-z0-9_-]{1,64}$/),
+      quantity: z.number().int().min(1).max(99),
+    })).min(1).max(100),
+    discountCode: z.string().regex(/^[a-zA-Z0-9_-]{1,32}$/),
+  }),
+});
+export type CheckoutReplay = z.infer<typeof CheckoutReplay>;
+
 export const ErrorEvent = z.object({
   /** Epoch milliseconds. */
   ts: z.number(),
@@ -24,6 +36,7 @@ export const ErrorEvent = z.object({
   flags: FlagSnapshot,
   source: z.enum(["server", "browser"]),
   simulated: z.boolean(),
+  replay: CheckoutReplay.optional(),
 });
 export type ErrorEvent = z.infer<typeof ErrorEvent>;
 

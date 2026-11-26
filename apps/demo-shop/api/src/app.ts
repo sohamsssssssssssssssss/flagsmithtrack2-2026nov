@@ -1,5 +1,5 @@
 import express, { type ErrorRequestHandler, type Express, type RequestHandler } from "express";
-import { type FlagSnapshot } from "@blast/shared";
+import { CheckoutReplay, type FlagSnapshot } from "@blast/shared";
 import { fuzzyMatch, products } from "./catalog.js";
 import { applyDiscount } from "./checkout/applyDiscount.js";
 import { createTelemetry } from "./telemetry.js";
@@ -82,15 +82,20 @@ export function buildApp(evaluate: Evaluate, telemetry = createTelemetry()): Exp
       res.status(error.status).json({ error: "Invalid request body." });
       return;
     }
+    const simulated = req.get("x-simulated") === "1";
+    const route = req.route?.path ?? req.path;
+    const recorded = simulated && route === "/api/checkout"
+      ? CheckoutReplay.safeParse({ method: req.method, body: req.body }) : undefined;
     telemetry.error({
       ts: Date.now(),
       identity: req.identity,
-      route: req.route?.path ?? req.path,
+      route,
       message: error.message,
       stack: error.stack ?? "",
       flags: req.flags,
       source: "server",
-      simulated: req.get("x-simulated") === "1",
+      simulated,
+      replay: recorded?.data,
     });
     res.status(500).json({ error: "Something went wrong. Please try again." });
   };

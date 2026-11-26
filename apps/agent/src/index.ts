@@ -3,6 +3,7 @@ import { PORTS } from "@blast/shared";
 import { BLAST_DIR, loadConfig } from "./config.js";
 import { openDb } from "./db.js";
 import { createFlagMap } from "./flagmap.js";
+import { buildFixJobs } from "./fix-jobs.js";
 import { FlagsmithClient } from "./flagsmith.js";
 import { buildServer } from "./server.js";
 import { buildIncidents } from "./incidents.js";
@@ -20,7 +21,8 @@ const proposals = buildProposals(db, client, cfg.envName, bus);
 const incidents = buildIncidents(db, proposals, bus);
 const flagMap = createFlagMap(client);
 const rollouts = buildRollouts(db, proposals, bus, fastHold ? 30_000 : 120_000);
-const app = buildServer(db, bus, { incidents, proposals, flagMap, rollouts });
+const fixes = buildFixJobs(db, client, flagMap, bus);
+const app = buildServer(db, bus, { incidents, proposals, flagMap, rollouts, fixes });
 const stopWatcher = startWatcher(db, client, cfg.envName, (c) => {
   console.log(`flag change (${c.source}): ${c.flag_key}`);
   bus.emit("change", c);
@@ -28,7 +30,10 @@ const stopWatcher = startWatcher(db, client, cfg.envName, (c) => {
 
 let stopIncidents: (() => void) | undefined;
 const rolloutTimer = setInterval(() => void rollouts.tick().catch(() => console.error("Rollout evaluation failed")), 1_000);
-app.addHook("onClose", async () => { stopWatcher(); stopIncidents?.(); clearInterval(rolloutTimer); });
+const fixTimer = setInterval(() => void fixes.tick().catch(() => console.error("Fix proposal scan failed")), 1_000);
+app.addHook("onClose", async () => {
+  stopWatcher(); stopIncidents?.(); clearInterval(rolloutTimer); clearInterval(fixTimer);
+});
 await app.listen({ port: PORTS.agent, host: "127.0.0.1" });
 console.log(`agent listening on http://localhost:${PORTS.agent}`);
 await flagMap.refresh().catch(() => console.error("Could not generate the flag map"));

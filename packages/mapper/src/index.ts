@@ -16,7 +16,7 @@ type Guard = { kind: "if" | "ternary" | "&&"; start_line: number; end_line: numb
 
 export type FlagHit = {
   flag: string; file: string; line: number; function: string | null;
-  guard: Guard | null; routes: string[]; confidence: "high" | "low"; via?: string;
+  guard: Guard | null; function_range?: { start_line: number; end_line: number }; routes: string[]; confidence: "high" | "low"; via?: string;
 };
 export type FlagMap = {
   sha: string; generated_at: string;
@@ -70,6 +70,11 @@ function functionName(path: NodePath | null | undefined) {
   }
   if (node.type === "ObjectMethod" || node.type === "ClassMethod") return nameOf(node.key) ?? null;
   return path.parentPath?.isVariableDeclarator() ? nameOf(path.parentPath.node.id) ?? null : null;
+}
+
+function functionRange(path: NodePath | null) {
+  const loc = path?.node.loc;
+  return loc ? { start_line: loc.start.line, end_line: loc.end.line } : undefined;
 }
 
 function guarded(path: NodePath) {
@@ -221,13 +226,13 @@ export async function mapFlags(repoPath: string, flagKeys: string[]): Promise<Fl
         start_line: Math.min(...regions.map((loc) => loc.start.line)),
         end_line: Math.max(...regions.map((loc) => loc.end.line)) } : null;
       const hit = { flag, file, line: path.node.loc!.start.line, function: functionName(fn),
-        guard, routes: sorted(labels), confidence };
+        guard, function_range: functionRange(fn), routes: sorted(labels), confidence };
       add(hit);
       for (const call of branches ? unit.calls : []) {
         if (!branches?.region.some((node) => call.node.start! >= node.start! && call.node.end! <= node.end!)) continue;
         const target = importedCall(call, unit, units);
         if (target) add({ ...hit, file: relative(root, target.target.absolute), line: target.fn.node.loc!.start.line,
-          function: functionName(target.fn), guard: null, confidence: "low", via: `${file}:${hit.line}` });
+          function: functionName(target.fn), function_range: functionRange(target.fn), guard: null, confidence: "low", via: `${file}:${hit.line}` });
       }
     }
     for (const call of unit.calls) for (const [flag, confidence] of callFlags(call, keys)) record(call, flag, confidence);

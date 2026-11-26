@@ -70,7 +70,7 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
       if (completeEnd - RECOVERY_MS >= incident.evidence.end && recovered(buckets, completeEnd, baseline)) {
         const ts = now();
         db.prepare("UPDATE incidents SET status='closed',closed_ts=? WHERE id=?").run(ts, open.id);
-        db.prepare("UPDATE proposals SET status='cancelled',decision_ts=? WHERE incident_id=? AND status='pending'").run(ts, open.id);
+        db.prepare("UPDATE proposals SET status='cancelled',decision_ts=? WHERE incident_id=? AND status='pending' AND kind!='fix_pr'").run(ts, open.id);
         log("incident_closed", { id: open.id, ts });
         bus.emit("incident_closed", { id: open.id, closed_ts: ts });
       } else {

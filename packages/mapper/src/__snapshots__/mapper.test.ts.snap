@@ -12,6 +12,10 @@ exports[`snapshots the real shop's checkout mapping 1`] = `
       "file": "apps/demo-shop/api/src/app.ts",
       "flag": "new_checkout",
       "function": "priceCart",
+      "function_range": {
+        "end_line": 75,
+        "start_line": 54,
+      },
       "guard": {
         "end_line": 73,
         "kind": "ternary",
@@ -27,6 +31,10 @@ exports[`snapshots the real shop's checkout mapping 1`] = `
       "file": "apps/demo-shop/api/src/checkout/applyDiscount.ts",
       "flag": "new_checkout",
       "function": "applyDiscount",
+      "function_range": {
+        "end_line": 8,
+        "start_line": 1,
+      },
       "guard": null,
       "line": 1,
       "routes": [

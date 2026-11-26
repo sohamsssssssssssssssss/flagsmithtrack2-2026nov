@@ -111,3 +111,7 @@ button.primary { background: #ef795e; color: #171311; border-color: #f39a85; }bu
 .cohort-evidence { display: grid; gap: 2px; color: var(--muted); font-size: 11px; }
 .cohort-evidence:empty { display: none; }
 .cohort-evidence strong { color: var(--warn); font-weight: 650; }
+.fix-link { color: var(--good); font-size: 12px; }
+.fix-panel .fix-diff { min-width: 0; font-size: 11px; }
+.fix-diff summary { cursor: pointer; color: var(--muted); }
+.fix-diff pre { overflow: auto; max-height: 200px; margin: 5px 0 0; padding: 8px; background: #12161b; }

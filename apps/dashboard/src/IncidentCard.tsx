@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { FixPanel } from "./FixPanel";
 import { RolloutStrip } from "./RolloutStrip";
 import { duration, percent, type Evidence, type IncidentDetail } from "./model";
 
@@ -20,8 +21,8 @@ export function IncidentCard({ incident, evidence, now, onDecision, onPropose, o
   </aside>;
 
   const latest = incident.proposal;
-  const proposal = latest?.kind === "rollout_stage" || latest?.rollback
-    ? incident.proposals.find((item) => item.kind !== "rollout_stage" && !item.rollback) ?? null
+  const proposal = latest?.kind === "rollout_stage" || latest?.kind === "fix_pr" || latest?.rollback
+    ? incident.proposals.find((item) => item.kind !== "rollout_stage" && item.kind !== "fix_pr" && !item.rollback) ?? null
     : latest;
   const lead = proposal?.evidence ?? incident.ranking[0];
   const gathering = incident.status === "open" && incident.confidence === "ambiguous";
@@ -114,6 +115,7 @@ export function IncidentCard({ incident, evidence, now, onDecision, onPropose, o
         <li className={recovered ? "done" : action?.outcome === "not_recovered" ? "failed" : ""}>
           {action?.outcome === "not_recovered" ? "Not recovered" : "Recovered"}</li>
       </ol>}
+      {incident.fix && <FixPanel job={incident.fix} now={now} decide={onDecision} />}
       {onStartRollout && <RolloutStrip incident={incident} now={now} start={onStartRollout} decide={onDecision} />}
       {error && <p role="alert" className="failure">{error}</p>}
     </div>
