@@ -5,6 +5,7 @@ type ApiValue = { type: "string" | "integer" | "boolean"; value: string } | null
 interface ApiOverride { segment: { id: number }; priority: number; enabled: boolean; value: ApiValue; variants: unknown[] }
 interface ApiFlag { environment_default: { enabled: boolean; value: ApiValue; variants: unknown[] }; segment_overrides: ApiOverride[] }
 export interface Feature { id: number; name: string }
+export class UnverifiedWrite extends Error {}
 export interface WriteResult { ok: boolean; before: FlagLiveState; after: FlagLiveState }
 
 export class FlagsmithError extends Error {
@@ -41,7 +42,7 @@ export class FlagsmithClient {
     return s;
   }
 
-  private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async req<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       let res: Response;
       try {
@@ -52,10 +53,10 @@ export class FlagsmithClient {
           signal: AbortSignal.timeout(10_000),
         });
       } catch (e) {
-        if (attempt === 0) continue; // one retry on network error / timeout
+        if (retry && attempt === 0) continue; // one retry on network error / timeout
         throw new FlagsmithError(this.redact(`${method} ${path}: ${(e as Error).message}`));
       }
-      if (res.status >= 500 && attempt === 0) continue; // one retry on 5xx
+      if (retry && res.status >= 500 && attempt === 0) continue; // one retry on 5xx
       const text = await res.text();
       if (!res.ok) throw new FlagsmithError(this.redact(`${method} ${path} -> ${res.status}: ${text.slice(0, 300)}`), res.status);
       return (text ? JSON.parse(text) : null) as T;
@@ -113,11 +114,24 @@ export class FlagsmithClient {
   }
 
   /** Turns off the environment default AND every segment override; ok only if nothing still serves the flag on. */
-  async disableEverywhere(featureId: number): Promise<WriteResult> {
-    const current = await this.raw(featureId);
-    return this.patch(featureId,
-      { environment_default: { enabled: false }, segment_overrides: overridesBody(current, () => true, false) },
-      (s) => !s.enabled && s.overrides.every((o) => !o.enabled));
+  async disableEverywhere(featureId: number, authorize?: (state: FlagLiveState) => void): Promise<WriteResult> {
+    const path = `/api/__future__/environments/${await this.resolveEnvKey()}/features/${featureId}/`;
+    const current = await this.req<ApiFlag>("GET", path);
+    const before = normalize(current);
+    const body = { environment_default: { enabled: false }, segment_overrides: overridesBody(current, () => true, false) };
+    authorize?.(before);
+    try {
+      await this.req("PATCH", path, body, !authorize);
+    } catch (error) {
+      if (error instanceof FlagsmithError && error.status && error.status < 500) throw error;
+      throw new UnverifiedWrite("Flagsmith write could not be confirmed");
+    }
+    try {
+      const after = await this.getState(featureId);
+      return { ok: !after.enabled && after.overrides.every((o) => !o.enabled), before, after };
+    } catch {
+      throw new UnverifiedWrite("Flagsmith accepted the write but its state could not be verified");
+    }
   }
 }
 

@@ -41,7 +41,7 @@ export function aggregate(rows: RequestRow[]): Metrics {
   }
   const series = (m: Map<number, { requests: number; errors: number }>) =>
     [...m].sort((a, b) => a[0] - b[0]).map(([ts, v]) => rate({ ts, ...v }));
-  const by_flag: Metrics["by_flag"] = {};
+  const by_flag: Metrics["by_flag"] = Object.create(null);
   for (const [fk, m] of byFlag) {
     const [flag, side] = fk.split("|") as [string, "on" | "off"];
     (by_flag[flag] ??= { on: [], off: [] })[side] = series(m);

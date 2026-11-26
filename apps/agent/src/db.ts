@@ -22,6 +22,13 @@ const MIGRATIONS = [
      payload_json TEXT NOT NULL, snapshot_hash TEXT NOT NULL, created_ts INTEGER NOT NULL, expires_ts INTEGER NOT NULL, status TEXT NOT NULL);
    CREATE TABLE actions(id INTEGER PRIMARY KEY, proposal_id INTEGER REFERENCES proposals(id), ts INTEGER NOT NULL,
      request_json TEXT, response_status INTEGER, verify_json TEXT);`,
+  `ALTER TABLE incidents ADD COLUMN evidence_json TEXT;
+   CREATE UNIQUE INDEX single_open_incident ON incidents(status) WHERE status = 'open';
+   ALTER TABLE proposals ADD COLUMN approver TEXT;
+   ALTER TABLE proposals ADD COLUMN decision_ts INTEGER;
+   CREATE UNIQUE INDEX one_pending_proposal ON proposals(incident_id) WHERE status IN ('pending', 'executing');
+   ALTER TABLE actions ADD COLUMN outcome TEXT;
+   ALTER TABLE actions ADD COLUMN outcome_ts INTEGER;`,
 ];
 
 export function openDb(path: string): DB {

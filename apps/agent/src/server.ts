@@ -1,12 +1,16 @@
+import type { buildIncidents } from "./incidents.js";
+import type { buildProposals } from "./proposals.js";
 import Fastify from "fastify";
 import { EventEmitter } from "node:events";
-import { ErrorIngest, INGEST, RequestBatch, type FlagChange } from "@blast/shared";
+import { ErrorIngest, INGEST, RequestBatch } from "@blast/shared";
 import { listChanges } from "./changes.js";
 import type { DB } from "./db.js";
 import { metrics } from "./metrics.js";
 
 /** Bus events: "change" (FlagChange) from the watcher, "bucket" (latest metrics) after ingest. */
-export function buildServer(db: DB, bus = new EventEmitter()) {
+export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
+  incidents: ReturnType<typeof buildIncidents>; proposals: ReturnType<typeof buildProposals>;
+}) {
   const app = Fastify({ logger: false });
   bus.setMaxListeners(0);
 
@@ -64,6 +68,22 @@ export function buildServer(db: DB, bus = new EventEmitter()) {
     return metrics(db, w);
   });
 
+  if (workflow) {
+    const { incidents, proposals } = workflow;
+    app.get("/api/incidents", () => incidents.list());
+    app.get<{ Params: { id: string } }>("/api/incidents/:id", (req) => incidents.get(Number(req.params.id)));
+    app.post<{ Params: { id: string }; Body: { flag: string } }>("/api/incidents/:id/propose", {
+      schema: { body: { type: "object", required: ["flag"], properties: { flag: { type: "string", minLength: 1, maxLength: 200 } } } },
+    }, (req) => incidents.pick(Number(req.params.id), req.body.flag));
+    for (const decision of ["approve", "reject"] as const) {
+      app.post<{ Params: { id: string }; Body: { approver: string } }>(`/api/proposals/:id/${decision}`, {
+        schema: { body: { type: "object", required: ["approver"], properties: {
+          approver: { type: "string", pattern: "\\S", maxLength: 200 },
+        } } },
+      }, (req) => proposals[decision](Number(req.params.id), req.body.approver.trim()));
+    }
+  }
+
   app.get("/api/stream", (req, reply) => {
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -71,12 +91,15 @@ export function buildServer(db: DB, bus = new EventEmitter()) {
       "Access-Control-Allow-Origin": "*",
     });
     const send = (event: string) => (data: unknown) => reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    const onChange = send("change") as (c: FlagChange) => void, onBucket = send("bucket");
-    bus.on("change", onChange);
-    bus.on("bucket", onBucket);
+    const events = ["change", "bucket", "incident_opened", "proposal_created", "action_done", "incident_closed"];
+    const listeners = events.map((event) => ({ event, listener: send(event) }));
+    listeners.forEach(({ event, listener }) => bus.on(event, listener));
     const ping = setInterval(() => reply.raw.write(": ping\n\n"), 15_000);
     reply.raw.write(": connected\n\n");
-    req.raw.on("close", () => { clearInterval(ping); bus.off("change", onChange); bus.off("bucket", onBucket); });
+    reply.raw.on("close", () => {
+      clearInterval(ping);
+      listeners.forEach(({ event, listener }) => bus.off(event, listener));
+    });
   });
 
   // Dashboard runs on another port in dev.
