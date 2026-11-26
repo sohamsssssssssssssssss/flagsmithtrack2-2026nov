@@ -28,7 +28,8 @@ function Dashboard() {
         api<Metrics>("/api/metrics?window=600", undefined, signal),
         api<Incident[]>("/api/incidents", undefined, signal),
       ]);
-      const active = incidents.find((i) => i.status === "open") ?? incidents[0];
+      const active = (tab === "overview" ? incidents.find((i) => i.rollout_status === "active" || i.rollout_status === "paused") : undefined)
+        ?? incidents.find((i) => i.status === "open") ?? incidents[0];
       const selected = tab === "audit" ? incidents : active ? [active] : [];
       const query = active ? `?start=${active.evidence.start}&end=${active.evidence.end}` : "";
       const [incidentDetails, sample] = await Promise.all([
@@ -73,6 +74,11 @@ function Dashboard() {
     finally { await refresh(); }
   }
 
+  async function startRollout(id: number) {
+    try { await api(`/api/incidents/${id}/rollout`, { confirmed_fix: true }); }
+    finally { await refresh(); }
+  }
+
   return <>
     <header className="topbar">
       <div className="brand"><span className="brand-mark" aria-hidden="true">◈</span><span>Blast Radius</span></div>
@@ -113,14 +119,14 @@ function Dashboard() {
               : <p className="empty-line">No flag changes in the last 10 minutes.</p>}
           </section>
         </div>
-        <IncidentCard key={incident?.id ?? "quiet"} incident={incident} evidence={evidence} now={now} onDecision={decide} onPropose={propose} />
+        <IncidentCard key={incident?.id ?? "quiet"} incident={incident} evidence={evidence} now={now} onDecision={decide} onPropose={propose} onStartRollout={startRollout} />
       </div> : tab === "map" ? <MapView flags={flags} incident={incident} /> : <section className="panel audit">
         <table><thead><tr><th>Proposal</th><th>Flag</th><th>Created</th><th>Approver</th><th>Decision</th><th>Action</th><th>Outcome</th></tr></thead>
           <tbody>{details.flatMap((item) => item.proposals.map((proposal) => {
             const action = item.actions.find((entry) => entry.proposal_id === proposal.id);
             return <tr key={proposal.id}><td>#{proposal.id}</td><td><code>{proposal.flag}</code></td>
               <td>{new Date(proposal.created).toLocaleString()}</td><td>{proposal.approver ?? "—"}</td>
-              <td>{proposal.status}</td><td>{action ? `#${action.id} · Disable flag` : "—"}</td>
+              <td>{proposal.status}</td><td>{action ? `#${action.id} · ${proposal.kind === "rollout_stage" ? `Rollout ${proposal.stage}%` : "Disable flag"}` : "—"}</td>
               <td><span className={`badge ${action?.outcome === "recovered" ? "green" : action?.outcome === "PARTIAL" ? "red" : ""}`}>{action?.outcome.replaceAll("_", " ") ?? "—"}</span></td></tr>;
           }))}
           {details.every((item) => item.proposals.length === 0) && <tr><td colSpan={7} className="empty-line">No proposals recorded.</td></tr>}</tbody></table>

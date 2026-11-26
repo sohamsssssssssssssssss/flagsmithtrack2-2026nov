@@ -17,3 +17,17 @@ export function fisherGreater(on: number, onErrors: number, off: number, offErro
   }
   return Math.min(1, sum);
 }
+
+export interface Sample { requests: number; errors: number; rate: number | null }
+
+export function compareRates(on: Sample, off: Sample) {
+  if (on.rate === null || off.rate === null || on.errors > on.requests || off.errors > off.requests) {
+    return { test: null, p: null, z: null };
+  }
+  if (Math.min(on.errors, off.errors, on.requests - on.errors, off.requests - off.errors) < 30) {
+    return { test: "fisher" as const, p: fisherGreater(on.requests, on.errors, off.requests, off.errors), z: null };
+  }
+  const pooled = (on.errors + off.errors) / (on.requests + off.requests);
+  const error = Math.sqrt(pooled * (1 - pooled) * (1 / on.requests + 1 / off.requests));
+  return { test: "z" as const, p: null, z: error > 0 ? (on.rate - off.rate) / error : null };
+}

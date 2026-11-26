@@ -1,3 +1,4 @@
+import type { buildRollouts } from "./rollouts.js";
 import type { createFlagMap } from "./flagmap.js";
 import type { buildIncidents } from "./incidents.js";
 import type { buildProposals } from "./proposals.js";
@@ -12,6 +13,7 @@ import { metrics } from "./metrics.js";
 export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
   incidents: ReturnType<typeof buildIncidents>; proposals: ReturnType<typeof buildProposals>;
   flagMap?: ReturnType<typeof createFlagMap>;
+  rollouts?: ReturnType<typeof buildRollouts>;
 }) {
   const app = Fastify({ logger: false });
   bus.setMaxListeners(0);
@@ -77,8 +79,20 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
       app.get("/api/map", (_req, reply) => flagMap.get() ?? reply.code(503).send({ message: "Flag map is being generated" }));
       app.post("/api/map/refresh", () => flagMap.refresh());
     }
-    app.get("/api/incidents", () => incidents.list());
-    app.get<{ Params: { id: string } }>("/api/incidents/:id", (req) => incidents.get(Number(req.params.id)));
+    app.get("/api/incidents", () => incidents.list().map((item) =>
+      ({ ...item, rollout_status: workflow.rollouts?.status(item.id) ?? null })));
+    app.get<{ Params: { id: string } }>("/api/incidents/:id", (req) => {
+      const id = Number(req.params.id);
+      return { ...incidents.get(id), rollout: workflow.rollouts?.get(id) ?? null };
+    });
+    if (workflow.rollouts) {
+      const rollouts = workflow.rollouts;
+      app.post<{ Params: { id: string }; Body: { confirmed_fix: boolean } }>("/api/incidents/:id/rollout", {
+        schema: { body: { type: "object", required: ["confirmed_fix"], properties: {
+          confirmed_fix: { type: "boolean", const: true },
+        } } },
+      }, (req) => rollouts.start(Number(req.params.id), req.body.confirmed_fix));
+    }
     app.post<{ Params: { id: string }; Body: { flag: string } }>("/api/incidents/:id/propose", {
       schema: { body: { type: "object", required: ["flag"], properties: { flag: { type: "string", minLength: 1, maxLength: 200 } } } },
     }, (req) => incidents.pick(Number(req.params.id), req.body.flag));

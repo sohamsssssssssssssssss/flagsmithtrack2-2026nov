@@ -61,3 +61,21 @@ On 26 November 2026, `PATCH /api/__future__/environments/{env_key}/features/3050
 The observed behavior was **upsert by segment ID**. A subsequent PATCH with `{"segment_overrides":[]}` preserved the disabled beta override in the verification GET, so the empty list did not replace the override set. Omission from a nonempty list with several existing overrides was untested. Reset explicitly disables each override.
 
 A standard flag rejected `variants: []` in the override entry with HTTP 400 and the message `Feature is not multivariate.` Omitting the empty field made the reset succeed.
+
+## Day 3 percentage rollout
+
+The Development segment `br_rollout_new_checkout` (1205195) accepted a single `ALL` rule with a `PERCENTAGE_SPLIT` condition. Pass `property: "$.identity.identifier"` and the percentage as a string. An omitted property returned HTTP 500, an empty property returned HTTP 400, and the plain name `identifier` matched none of the SDK evaluations. The identity JSONPath matched as expected.
+
+Creating the segment through `POST /api/v1/projects/56400/segments/` returned HTTP 201. Updating its nested rule through `PATCH /api/v1/projects/56400/segments/1205195/` and reading it back succeeded at 10, 50, and 100. The feature override required an unused priority when the disabled beta override was present. With the default off, the shop's local-evaluation request batches measured:
+
+| Rule | Flag on | Flag off |
+| ---: | ---: | ---: |
+| 10% | 31 | 269 |
+| 50% | 150 | 150 |
+| 100% | 300 | 0 |
+
+Each row used 300 distinct identities. The probe disabled the feature and verified override removal via `DELETE /api/__future__/environments/{env_key}/features/305031/segment-overrides/1205195/` (HTTP 200) followed by a feature GET. The reusable segment was retained.
+
+The dashboard rollout was then tested from a recovered incident against a locally patched and restarted shop. Each stage had a separate approval and a 30-second hold, with a delay for SDK refresh and complete telemetry buckets. The health gate saw 0/2 on versus 0/53 off at 10%, 0/27 on versus 0/27 off at 50%, and 0/53 on at 100% against the 50% hold's 0/27 off control. No spike was observed. The 100% action re-read the default as enabled with no segment overrides. The stale, disabled beta override was explicitly removed before the run so it could not shadow the final default.
+
+After verification the flag was reset to off and the temporary shop patch was restored. The short 10% hold yielded only two exposed checkout requests, so that sample is functional demo evidence.

@@ -4,6 +4,21 @@ type Fetch = typeof fetch;
 type ApiValue = { type: "string" | "integer" | "boolean"; value: string } | null;
 interface ApiOverride { segment: { id: number }; priority: number; enabled: boolean; value: ApiValue; variants: unknown[] }
 interface ApiFlag { environment_default: { enabled: boolean; value: ApiValue; variants: unknown[] }; segment_overrides: ApiOverride[] }
+export type RolloutStage = 10 | 50 | 100;
+export type RolloutSnapshot = { state: FlagLiveState; segment: { id: number; percentage: number } | null };
+interface ApiSegment {
+  id: number; name: string;
+  rules: { type: string; rules: unknown[]; conditions: { operator: string; property: string; value: string }[] }[];
+}
+const rulesFor = (stage: RolloutStage) => [{ type: "ALL", rules: [],
+  conditions: [{ operator: "PERCENTAGE_SPLIT", property: "$.identity.identifier", description: null, value: String(stage) }] }];
+
+export function canApplyRollout({ state, segment }: RolloutSnapshot, stage: RolloutStage) {
+  if (state.enabled || state.overrides.some((override) => override.segment_id !== segment?.id)) return false;
+  const enabled = state.overrides.some((override) => override.enabled);
+  return stage === 10 ? !enabled : enabled && segment?.percentage === (stage === 50 ? 10 : 50);
+}
+
 export interface Feature { id: number; name: string }
 export class UnverifiedWrite extends Error {}
 export interface WriteResult { ok: boolean; before: FlagLiveState; after: FlagLiveState }
@@ -111,6 +126,69 @@ export class FlagsmithClient {
       !state.enabled && state.overrides.every((o) => o.segment_id === segmentId && !o.enabled),
     (state) => !state.enabled && state.overrides.length === 1
       && state.overrides[0]?.segment_id === segmentId && !state.overrides[0].enabled);
+  }
+
+  private segmentPath() { return `/api/v1/projects/${this.opts.projectId}/segments/`; }
+
+  private async getRolloutSegment(flag: string): Promise<RolloutSnapshot["segment"]> {
+    const path = this.segmentPath();
+    const response = await this.req<{ results: ApiSegment[] } | ApiSegment[]>("GET", path + "?page_size=999");
+    const matches = (Array.isArray(response) ? response : response.results).filter((segment) => segment.name === `br_rollout_${flag}`);
+    if (matches.length > 1) throw new FlagsmithError("Several rollout segments have the same name");
+    const match = matches[0];
+    if (!match) return null;
+    const { rules } = await this.req<ApiSegment>("GET", path + match.id + "/");
+    const rule = rules[0], condition = rule?.conditions[0];
+    if (rules.length !== 1 || rule?.type !== "ALL" || rule.rules.length ||
+      rule.conditions.length !== 1 || condition?.operator !== "PERCENTAGE_SPLIT" || condition.property !== "$.identity.identifier" ||
+      !["10", "50", "100"].includes(condition.value)) {
+      throw new FlagsmithError("Unexpected rollout segment rules");
+    }
+    return { id: match.id, percentage: Number(condition.value) };
+  }
+
+  async getRolloutSnapshot(flag: string, featureId: number): Promise<RolloutSnapshot> {
+    const [state, segment] = await Promise.all([this.getState(featureId), this.getRolloutSegment(flag)]);
+    return { state, segment };
+  }
+
+  async applyRollout(flag: string, featureId: number, stage: RolloutStage,
+    authorize: (snapshot: RolloutSnapshot) => void): Promise<WriteResult> {
+    const featurePath = `/api/__future__/environments/${await this.resolveEnvKey()}/features/${featureId}/`;
+    const snapshot = await this.getRolloutSnapshot(flag, featureId);
+    let segment = snapshot.segment;
+    const before = snapshot.state;
+    if (!canApplyRollout(snapshot, stage)) {
+      throw new FlagsmithError("Flag has an unexpected default, segment override, or rollout percentage");
+    }
+    authorize(snapshot);
+    try {
+      if (stage === 100) {
+        await this.req("PATCH", featurePath, { environment_default: { enabled: true } }, false);
+        if (!(await this.getState(featureId)).enabled) throw new UnverifiedWrite("Environment default was not enabled");
+        await this.req("DELETE", featurePath + `segment-overrides/${segment!.id}/`, undefined, false);
+      } else {
+        const path = this.segmentPath();
+        if (!segment) {
+          await this.req("POST", path, { name: `br_rollout_${flag}`, project: this.opts.projectId, rules: rulesFor(stage) }, false);
+        } else if (segment.percentage !== stage) {
+          await this.req("PATCH", path + segment.id + "/", { rules: rulesFor(stage) }, false);
+        }
+        segment = await this.getRolloutSegment(flag);
+        if (segment?.percentage !== stage) throw new UnverifiedWrite("Rollout segment percentage did not verify");
+        if (stage === 10) {
+          await this.req("PATCH", featurePath, { environment_default: { enabled: false },
+            segment_overrides: [{ segment: { id: segment.id }, enabled: true }] }, false);
+        }
+      }
+      const after = await this.getState(featureId);
+      const ok = stage === 100 ? after.enabled && !after.overrides.length
+        : !after.enabled && after.overrides.length === 1 && after.overrides[0]?.segment_id === segment?.id
+          && after.overrides[0]?.enabled === true;
+      return { ok, before, after };
+    } catch (error) {
+      throw new UnverifiedWrite(this.redact(error instanceof Error ? error.message : "Rollout write could not be verified"));
+    }
   }
 
   /** Turns off the environment default AND every segment override; ok only if nothing still serves the flag on. */

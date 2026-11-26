@@ -29,6 +29,12 @@ const MIGRATIONS = [
    CREATE UNIQUE INDEX one_pending_proposal ON proposals(incident_id) WHERE status IN ('pending', 'executing');
    ALTER TABLE actions ADD COLUMN outcome TEXT;
    ALTER TABLE actions ADD COLUMN outcome_ts INTEGER;`,
+  `CREATE TABLE rollouts(
+      incident_id INTEGER PRIMARY KEY REFERENCES incidents(id), flag TEXT NOT NULL, feature_id INTEGER NOT NULL,
+      route TEXT NOT NULL, stage INTEGER NOT NULL CHECK(stage IN (10,50,100)), status TEXT NOT NULL,
+      hold_ms INTEGER NOT NULL, started_ts INTEGER NOT NULL, reason TEXT, rollback_checked INTEGER NOT NULL DEFAULT 0
+   );
+   CREATE UNIQUE INDEX one_running_rollout_per_flag ON rollouts(flag) WHERE status='active';`,
 ];
 
 export function openDb(path: string): DB {

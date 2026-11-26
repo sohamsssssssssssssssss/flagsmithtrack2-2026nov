@@ -1,0 +1,72 @@
+import { useState, type FormEvent } from "react";
+import { duration, percent, type IncidentDetail } from "./model";
+
+type Props = {
+  incident: IncidentDetail;
+  now: number;
+  start: (id: number) => Promise<void>;
+  decide: (id: number, decision: "approve" | "reject", approver: string) => Promise<void>;
+};
+
+export function RolloutStrip({ incident, now, start, decide }: Props) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [approver, setApprover] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const rollout = incident.rollout;
+  const canStart = !rollout && incident.status === "closed" && incident.actions.some((action) => action.outcome === "recovered");
+  if (!rollout && !canStart) return null;
+
+  async function perform(event: FormEvent, action: () => Promise<void>) {
+    event.preventDefault();
+    setError(""); setBusy(true);
+    try { await action(); }
+    catch (error) { setError(error instanceof Error ? error.message : "Rollout action failed"); }
+    finally { setBusy(false); }
+  }
+
+  const current = rollout?.stages.find((stage) => stage.stage === rollout.stage);
+  const pending = rollout?.status === "paused" && rollout.rollback?.status === "pending" && rollout.rollback.expires > now
+    ? { id: rollout.rollback.id, label: "Approve disable" }
+    : rollout?.status === "active" && current?.status === "pending" && current.expires_ts > now
+      ? { id: current.proposal_id, label: `Approve ${current.stage}%` } : null;
+
+  return <section className="rollout-strip" aria-labelledby="rollout-heading">
+    <div className="rollout-heading"><h3 id="rollout-heading">Staged rollout</h3>
+      {rollout && <span className={`badge ${rollout.status === "complete" ? "green" : rollout.status === "paused" ? "red" : "amber"}`}>
+        {rollout.status === "complete" ? "Complete" : rollout.status === "paused" ? "Paused" : `Hold ${duration(rollout.hold_ms)}`}
+      </span>}
+    </div>
+    <ol className="rollout-stages">{([10, 50, 100] as const).map((stage) => {
+      const record = rollout?.stages.find((item) => item.stage === stage);
+      const label = record?.outcome === "stage_passed" ? "Passed" : record?.outcome === "stage_failed" ? "Gate failed"
+        : record?.outcome === "PARTIAL" ? "PARTIAL" : record?.outcome === "watching_rollout" ? "Holding"
+        : record?.status === "pending" ? record.expires_ts > now ? "Approval needed" : "Expired"
+        : record?.status === "executing" ? "Applying" : (record?.status ?? "Queued");
+      return <li key={stage} className={record?.outcome === "stage_passed" ? "stage-passed" : ""}>
+        <strong>{stage}%</strong><span>{label}</span>
+        {record?.gate && <small title={record.gate.control === "stage_50" ? "Off cohort from the 50% hold" : "Concurrent cohorts"}>
+          On {percent(record.gate.on.rate)} ({record.gate.on.errors}/{record.gate.on.requests})<br />
+          Off {percent(record.gate.off.rate)} ({record.gate.off.errors}/{record.gate.off.requests})
+        </small>}
+      </li>;
+    })}</ol>
+    {canStart && <form className="approval" onSubmit={(event) => perform(event, () => start(incident.id))}>
+      <label className="rollout-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+        Fix merged and shop restarted</label>
+      <button disabled={!confirmed || busy}>Propose 10%</button>
+    </form>}
+    {rollout?.reason && <p className="failure" role="status">{rollout.reason}</p>}
+    {rollout?.rollback?.status === "approved" && <p className="muted">Rollback approved.</p>}
+    {pending && <form className="approval" onSubmit={(event) => perform(event, () => {
+      const reject = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "reject";
+      return decide(pending.id, reject ? "reject" : "approve", approver.trim());
+    })}>
+      <label htmlFor="rollout-approver">Rollout approver name</label>
+      <input id="rollout-approver" required maxLength={200} value={approver} onChange={(event) => setApprover(event.target.value)} />
+      <div><button className="primary" value="approve" disabled={busy || !approver.trim()}>{pending.label}</button>
+        <button value="reject" disabled={busy || !approver.trim()}>Reject</button></div>
+    </form>}
+    {error && <p className="failure" role="alert">{error}</p>}
+  </section>;
+}

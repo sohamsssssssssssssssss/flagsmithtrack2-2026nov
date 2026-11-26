@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from "react";
+import { RolloutStrip } from "./RolloutStrip";
 import { duration, percent, type Evidence, type IncidentDetail } from "./model";
 
 type Props = {
   incident: IncidentDetail | null; evidence: Evidence | null; now: number;
   onDecision: (id: number, decision: "approve" | "reject", approver: string) => Promise<void>;
+  onStartRollout?: (id: number) => Promise<void>;
   onPropose?: (incidentId: number, flag: string) => Promise<void>;
 };
 
-export function IncidentCard({ incident, evidence, now, onDecision, onPropose }: Props) {
+export function IncidentCard({ incident, evidence, now, onDecision, onPropose, onStartRollout }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -17,7 +19,10 @@ export function IncidentCard({ incident, evidence, now, onDecision, onPropose }:
       <p>Incidents will appear here when the agent detects an error spike.</p></div>
   </aside>;
 
-  const { proposal } = incident;
+  const latest = incident.proposal;
+  const proposal = latest?.kind === "rollout_stage" || latest?.rollback
+    ? incident.proposals.find((item) => item.kind !== "rollout_stage" && !item.rollback) ?? null
+    : latest;
   const lead = proposal?.evidence ?? incident.ranking[0];
   const action = [...incident.actions].reverse().find((item) => item.proposal_id === proposal?.id);
   const expired = proposal?.status === "expired" || (proposal?.status === "pending" && now >= proposal.expires);
@@ -102,6 +107,7 @@ export function IncidentCard({ incident, evidence, now, onDecision, onPropose }:
         <li className={recovered ? "done" : action?.outcome === "not_recovered" ? "failed" : ""}>
           {action?.outcome === "not_recovered" ? "Not recovered" : "Recovered"}</li>
       </ol>}
+      {onStartRollout && <RolloutStrip incident={incident} now={now} start={onStartRollout} decide={onDecision} />}
       {error && <p role="alert" className="failure">{error}</p>}
     </div>
   </aside>;

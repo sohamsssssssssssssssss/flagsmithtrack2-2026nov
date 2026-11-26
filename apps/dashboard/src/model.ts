@@ -11,18 +11,25 @@ export type Candidate = {
 };
 export type Incident = {
   id: number; opened_ts: number; closed_ts: number | null; status: string; top_flag: string | null;
+  rollout_status?: "active" | "paused" | "complete" | null;
   confidence: "confident" | "ambiguous"; ranking: Candidate[];
   evidence: { start: number; end: number; baseline: Cohort; recent: Cohort };
 };
 export type Proposal = {
-  id: number; incident_id: number; flag: string; evidence: Candidate; created: number; expires: number;
+  id: number; incident_id: number; flag: string; kind?: string; stage?: number; rollback?: boolean; evidence?: Candidate; created: number; expires: number;
   decision_ts: number | null; approver: string | null; status: string;
 };
 export type Action = {
   id: number; proposal_id: number; ts: number; outcome: string; outcome_ts: number | null;
   verification: { ok: boolean; error?: string } | null;
 };
-export type IncidentDetail = Incident & { proposal: Proposal | null; proposals: Proposal[]; actions: Action[] };
+export type Rollout = {
+  stage: 10 | 50 | 100; status: "active" | "paused" | "complete"; hold_ms: number; reason: string | null;
+  stages: { stage: number; proposal_id: number; expires_ts: number; status: string; outcome: string | null;
+    gate: { on: Cohort; off: Cohort; control: string } | null }[];
+  rollback: Proposal | null;
+};
+export type IncidentDetail = Incident & { rollout?: Rollout | null; proposal: Proposal | null; proposals: Proposal[]; actions: Action[] };
 export type Evidence = { simulated: boolean; route?: string; frame?: string };
 
 export const percent = (rate: number | null | undefined) => rate == null ? "—" : `${(rate * 100).toFixed(1)}%`;

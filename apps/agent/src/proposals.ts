@@ -4,11 +4,14 @@ import type { FlagLiveState } from "@blast/shared";
 import { audit } from "./audit.js";
 import { loadStates, recordChange } from "./changes.js";
 import type { DB } from "./db.js";
-import { FlagsmithError, UnverifiedWrite, type FlagsmithClient } from "./flagsmith.js";
+import { canApplyRollout, FlagsmithError, UnverifiedWrite, type FlagsmithClient, type RolloutSnapshot, type RolloutStage } from "./flagsmith.js";
 import type { rankFlags } from "./ranker.js";
 
 type Evidence = ReturnType<typeof rankFlags>["ranking"][number];
-type Client = Pick<FlagsmithClient, "getState" | "disableEverywhere" | "redact">;
+type Client = Pick<FlagsmithClient, "getState" | "disableEverywhere" | "redact"> &
+  Partial<Pick<FlagsmithClient, "getRolloutSnapshot" | "applyRollout">>;
+type Payload = { flag: string; feature_id: number; evidence?: Evidence; stage?: RolloutStage; rollback?: true };
+type Kind = "disable_flag" | "rollout_stage";
 type Proposal = {
   id: number; incident_id: number; kind: string; payload_json: string; snapshot_hash: string;
   created_ts: number; expires_ts: number; status: string; approver: string | null; decision_ts: number | null;
@@ -23,6 +26,9 @@ export function snapshotHash(incident: number, feature: number, state: FlagLiveS
     .map((o) => [o.segment_id, o.enabled, o.value]);
   return createHash("sha256").update(JSON.stringify([incident, feature, state.enabled, state.value, overrides])).digest("hex");
 }
+
+const rolloutHash = (incident: number, feature: number, snapshot: RolloutSnapshot) =>
+  createHash("sha256").update(JSON.stringify([snapshotHash(incident, feature, snapshot.state), snapshot.segment])).digest("hex");
 
 const decodeProposal = ({ payload_json, created_ts, expires_ts, ...row }: Proposal) =>
   ({ ...row, ...JSON.parse(payload_json), created: created_ts, expires: expires_ts });
@@ -48,11 +54,14 @@ export function buildProposals(db: DB, client: Client, env: string, bus: EventEm
     });
     if (!state.enabled && !state.overrides.some((o) => o.enabled)) throw new DecisionError("Flag is already disabled");
     if (!isOpen(incident)) throw new DecisionError("Incident is closed");
+    return enqueue(incident, "disable_flag", { flag: evidence.flag, feature_id: feature.feature_id, evidence },
+      snapshotHash(incident, feature.feature_id, state));
+  }
+
+  function enqueue(incident: number, kind: Kind, payload: Payload, hash: string) {
     const created = now();
-    const payload = { flag: evidence.flag, feature_id: feature.feature_id, evidence };
     const result = db.prepare(`INSERT OR IGNORE INTO proposals(incident_id,kind,payload_json,snapshot_hash,created_ts,expires_ts,status)
-      VALUES (?,'disable_flag',?,?,?,?, 'pending')`).run(incident, JSON.stringify(payload),
-      snapshotHash(incident, feature.feature_id, state), created, created + 600_000);
+      VALUES (?,?,?,?,?,?,'pending')`).run(incident, kind, JSON.stringify(payload), hash, created, created + 600_000);
     if (!result.changes) throw new DecisionError("Incident already has a pending proposal");
     const proposal = decodeProposal(get(Number(result.lastInsertRowid)));
     log("proposal_created", { proposal });
@@ -60,12 +69,39 @@ export function buildProposals(db: DB, client: Client, env: string, bus: EventEm
     return proposal;
   }
 
+  async function queueRollout(incident: number, flag: string, feature: number, stage: RolloutStage) {
+    if (!client.getRolloutSnapshot) throw new DecisionError("Rollout is unavailable", 503);
+    const snapshot = await client.getRolloutSnapshot(flag, feature);
+    if (snapshot.state.overrides.some((override) => override.segment_id !== snapshot.segment?.id)) {
+      throw new DecisionError("Resolve other segment overrides before starting rollout");
+    }
+    if (!canApplyRollout(snapshot, stage)) throw new DecisionError("Flag state is outside this rollout stage");
+    return enqueue(incident, "rollout_stage", { flag, feature_id: feature, stage }, rolloutHash(incident, feature, snapshot));
+  }
+
+  async function queueRollback(incident: number, flag: string, feature: number) {
+    const state = await client.getState(feature);
+    if (!state.enabled && !state.overrides.some((override) => override.enabled)) return;
+    enqueue(incident, "disable_flag", { flag, feature_id: feature, rollback: true }, snapshotHash(incident, feature, state));
+  }
+
+  function eligible(p: Proposal) {
+    const payload = JSON.parse(p.payload_json) as Payload;
+    if (p.kind === "disable_flag" && !payload.rollback) return Boolean(isOpen(p.incident_id));
+    const rollout = db.prepare("SELECT status,stage,flag,feature_id FROM rollouts WHERE incident_id=?").get(p.incident_id) as
+      { status: string; stage: number; flag: string; feature_id: number } | undefined;
+    if (!rollout || rollout.flag !== payload.flag || rollout.feature_id !== payload.feature_id) return false;
+    return p.kind === "rollout_stage" ? rollout.status === "active" && rollout.stage === payload.stage
+      && !db.prepare("SELECT 1 FROM incidents WHERE status='open' LIMIT 1").get()
+      : p.kind === "disable_flag" && payload.rollback === true && rollout.status === "paused";
+  }
+
   function applyDecision(id: number, approver: string, approve: boolean) {
     expire();
     const p = get(id);
     if (p.status === "expired") throw new DecisionError("Proposal expired");
-    if (p.status !== "pending" || !isOpen(p.incident_id)) throw new DecisionError("Proposal is no longer pending");
-    if (p.kind !== "disable_flag") throw new DecisionError("Action is outside the disable-only allowlist");
+    if (p.status !== "pending" || !eligible(p)) throw new DecisionError("Proposal is no longer pending");
+    if (p.kind !== "disable_flag" && p.kind !== "rollout_stage") throw new DecisionError("Action is outside the allowlist");
     const status = approve ? "executing" : "rejected";
     const result = db.prepare("UPDATE proposals SET status=?,approver=?,decision_ts=? WHERE id=? AND status='pending' AND expires_ts>?")
       .run(status, approver, now(), id, now());
@@ -81,18 +117,25 @@ export function buildProposals(db: DB, client: Client, env: string, bus: EventEm
 
   async function approve(id: number, approver: string) {
     const p = applyDecision(id, approver, true);
-    const { flag, feature_id } = JSON.parse(p.payload_json) as { flag: string; feature_id: number };
+    const { flag, feature_id, stage, rollback } = JSON.parse(p.payload_json) as Payload;
     let actionId: number | undefined;
     let result: Awaited<ReturnType<Client["disableEverywhere"]>>;
     try {
-      result = await client.disableEverywhere(feature_id, (state) => {
-        if (!isOpen(p.incident_id)) throw new DecisionError("Incident is closed");
-        if (snapshotHash(p.incident_id, feature_id, state) !== p.snapshot_hash) throw new DecisionError("Flag state changed");
+      function authorize(hash: string) {
+        if (!eligible(p)) throw new DecisionError("Proposal is no longer eligible");
+        if (hash !== p.snapshot_hash) throw new DecisionError("Flag state changed");
         if (now() >= p.expires_ts) throw new DecisionError("Proposal expired");
         log("proposal_approved", { id, approver, snapshot_hash: p.snapshot_hash });
         actionId = Number(db.prepare(`INSERT INTO actions(proposal_id,ts,request_json,outcome)
-          VALUES (?,?,?,'executing')`).run(id, now(), JSON.stringify({ kind: "disable_flag", flag, feature_id })).lastInsertRowid);
-      });
+          VALUES (?,?,?,'executing')`).run(id, now(), JSON.stringify({ kind: p.kind, flag, feature_id, stage })).lastInsertRowid);
+      }
+      if (p.kind === "rollout_stage") {
+        if (!client.applyRollout || !stage || ![10, 50, 100].includes(stage)) throw new DecisionError("Invalid rollout stage");
+        result = await client.applyRollout(flag, feature_id, stage, (snapshot) =>
+          authorize(rolloutHash(p.incident_id, feature_id, snapshot)));
+      } else {
+        result = await client.disableEverywhere(feature_id, (state) => authorize(snapshotHash(p.incident_id, feature_id, state)));
+      }
     } catch (error) {
       const message = client.redact(error instanceof Error ? error.message : String(error));
       const outcome = actionId !== undefined && (error instanceof UnverifiedWrite || !(error instanceof FlagsmithError))
@@ -110,7 +153,7 @@ export function buildProposals(db: DB, client: Client, env: string, bus: EventEm
       throw new DecisionError(outcome === "PARTIAL" ? "PARTIAL: write could not be verified" : "Flagsmith action failed", 502);
     }
 
-    const outcome = result.ok ? "watching" : "PARTIAL";
+    const outcome = !result.ok ? "PARTIAL" : p.kind === "rollout_stage" ? "watching_rollout" : rollback ? "disabled" : "watching";
     const ts = now();
     db.transaction(() => {
       db.prepare("UPDATE actions SET verify_json=?,outcome=?,outcome_ts=? WHERE id=?")
@@ -132,5 +175,5 @@ export function buildProposals(db: DB, client: Client, env: string, bus: EventEm
     return (db.prepare("SELECT * FROM proposals WHERE incident_id=? ORDER BY id DESC").all(incident) as Proposal[]).map(decodeProposal);
   }
 
-  return { create, approve, reject, list, expire };
+  return { create, approve, reject, list, expire, queueRollout, queueRollback };
 }

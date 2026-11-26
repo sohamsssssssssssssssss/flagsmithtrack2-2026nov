@@ -99,3 +99,11 @@ button.primary { background: #ef795e; color: #171311; border-color: #f39a85; }bu
 @media (max-width: 1150px) { .layout { grid-template-columns: minmax(165px, 190px) minmax(0, 1fr) minmax(300px, 350px); gap: 10px; } main { padding-inline: 16px; } }
 @media (max-width: 920px) { .layout { grid-template-columns: minmax(0,1fr) minmax(290px,.8fr); } .flags { grid-column: 1 / -1; } .flags ul { display: flex; flex-wrap: wrap; } .flags li { border-bottom: 0; } }
 @media (max-width: 650px) { .layout { grid-template-columns: 1fr; }.flags, .center { grid-column: auto; }.incident { grid-row: 1; } .topbar { padding: 0 10px; gap: 12px; flex-wrap: wrap; height: auto; min-height: 62px; } nav { height: 40px; gap: 9px; } .top-status { gap: 5px; }.environment { font-size: 11px; }.page-heading p { display: none; }.connection { font-size: 10px; }.plot { height: 250px; } }
+.rollout-strip { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+.rollout-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.rollout-heading h3 { margin: 0; font-size: 13px; }
+.rollout-stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.rollout-stages li { display: grid; align-content: start; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; }
+.rollout-stages strong { font-size: 16px; }.rollout-stages span, .rollout-stages small { font-size: 10px; color: var(--muted); }
+.rollout-stages .stage-passed { border-color: #31564b; }.rollout-stages .stage-passed strong { color: var(--good); }
+.rollout-strip .rollout-confirm { align-items: center; justify-content: flex-start; }.rollout-confirm input { width: auto; }
