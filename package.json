@@ -6,6 +6,8 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "dev": "pnpm --filter @blast/shared --filter @blast/mapper build && pnpm -r --parallel --filter './apps/**' dev",
+    "demo:up": "pnpm --filter @blast/shared --filter @blast/mapper build && pnpm --parallel --filter @blast/agent --filter @blast/shop-api --filter @blast/shop-web --filter @blast/dashboard dev",
+    "traffic": "pnpm --filter @blast/traffic start --users 300 --rps 8",
     "build": "pnpm -r build",
     "test": "vitest run",
     "lint": "pnpm -r lint",

@@ -62,6 +62,7 @@ describe("FlagsmithClient", () => {
     expect(r.after.overrides).toEqual([{ segment_id: 7, enabled: false, value: null }, { segment_id: 8, enabled: false, value: true }]);
     const sent = calls.find((c) => c.method === "PATCH")!.body.segment_overrides;
     expect(sent).toHaveLength(2);
+    expect(sent[0]).not.toHaveProperty("variants");
     expect(sent[1]).toMatchObject({ segment: { id: 8 }, priority: 2, value: { type: "boolean", value: "true" } });
   });
 
@@ -71,6 +72,24 @@ describe("FlagsmithClient", () => {
     expect(r.ok).toBe(true);
     expect(r.after.enabled).toBe(false);
     expect(r.after.overrides.every((o) => !o.enabled)).toBe(true);
+  });
+
+  it("rejects probing when another override could be removed", async () => {
+    const { client, calls } = fakeApi(base);
+    await expect(client.probeDisabledOverrideList(1, 8)).rejects.toThrow("exactly one disabled demo override");
+    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
+  });
+
+  it("re-reads after omitting the sole disabled demo override", async () => {
+    const { client, calls } = fakeApi({
+      environment_default: { ...base.environment_default, enabled: false },
+      segment_overrides: [base.segment_overrides[1]],
+    });
+    const result = await client.probeDisabledOverrideList(1, 8);
+    expect(result.ok).toBe(true);
+    expect(result.after.overrides).toEqual(result.before.overrides);
+    expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ segment_overrides: [] });
+    expect(calls.at(-1)?.method).toBe("GET");
   });
 
   it("reports ok=false when the re-read does not match", async () => {

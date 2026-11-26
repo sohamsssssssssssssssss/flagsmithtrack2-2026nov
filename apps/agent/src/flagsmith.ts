@@ -35,7 +35,10 @@ export class FlagsmithClient {
   }
 
   redact(s: string): string {
-    return s.split(this.opts.adminKey).join("[REDACTED]");
+    for (const key of [this.opts.adminKey, this.envKey, process.env.FLAGSMITH_SERVER_KEY]) {
+      if (key) s = s.split(key).join("[REDACTED]");
+    }
+    return s;
   }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -82,8 +85,10 @@ export class FlagsmithClient {
     return normalize(await this.raw(featureId));
   }
 
-  private async patch(featureId: number, body: unknown, check: (s: FlagLiveState) => boolean): Promise<WriteResult> {
+  private async patch(featureId: number, body: unknown, check: (s: FlagLiveState) => boolean,
+    allow?: (s: FlagLiveState) => boolean): Promise<WriteResult> {
     const before = await this.getState(featureId);
+    if (allow && !allow(before)) throw new FlagsmithError("Override probe requires exactly one disabled demo override");
     await this.req("PATCH", `/api/__future__/environments/${await this.resolveEnvKey()}/features/${featureId}/`, body);
     const after = await this.getState(featureId); // always re-read: the PATCH response is not trusted
     return { ok: check(after), before, after };
@@ -99,6 +104,14 @@ export class FlagsmithClient {
       (s) => s.overrides.find((o) => o.segment_id === segmentId)?.enabled === enabled);
   }
 
+  /** Probe omission semantics only when the sole override is the disabled demo segment. */
+  async probeDisabledOverrideList(featureId: number, segmentId: number): Promise<WriteResult> {
+    return this.patch(featureId, { segment_overrides: [] }, (state) =>
+      !state.enabled && state.overrides.every((o) => o.segment_id === segmentId && !o.enabled),
+    (state) => !state.enabled && state.overrides.length === 1
+      && state.overrides[0]?.segment_id === segmentId && !state.overrides[0].enabled);
+  }
+
   /** Turns off the environment default AND every segment override; ok only if nothing still serves the flag on. */
   async disableEverywhere(featureId: number): Promise<WriteResult> {
     const current = await this.raw(featureId);
@@ -111,7 +124,8 @@ export class FlagsmithClient {
 // Sends the full override list (with priority/value/variants) so it is safe whether PATCH replaces or upserts the array.
 function overridesBody(current: ApiFlag, match: (segmentId: number) => boolean, enabled: boolean, addSegmentId?: number) {
   const list = current.segment_overrides.map((o) => ({
-    segment: o.segment, priority: o.priority, value: o.value, variants: o.variants,
+    segment: o.segment, priority: o.priority, value: o.value,
+    ...(o.variants.length ? { variants: o.variants } : {}),
     enabled: match(o.segment.id) ? enabled : o.enabled,
   }));
   if (addSegmentId !== undefined && !list.some((o) => o.segment.id === addSegmentId))

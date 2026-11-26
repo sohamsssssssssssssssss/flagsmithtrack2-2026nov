@@ -53,3 +53,11 @@ Result: `[]`. The audit log can't be relied on for the change history yet. Optio
 ## Not done (needs your confirmation)
 
 - `probe_flag` feature (id 304837) and `probe_segment` (id 1204518) still exist in blast-radius. `probe_flag` was converted to multivariate. Waiting on your OK to delete.
+
+## Day 2 segment override write
+
+On 26 November 2026, `PATCH /api/__future__/environments/{env_key}/features/305031/` added an enabled `beta_cohort` override (segment 1204777) while the Development default was off. The reset PATCH updated that same override in place to disabled. Each successful PATCH returned HTTP 200 and was followed by a separate GET.
+
+The observed behavior was **upsert by segment ID**. A subsequent PATCH with `{"segment_overrides":[]}` preserved the disabled beta override in the verification GET, so the empty list did not replace the override set. Omission from a nonempty list with several existing overrides was untested. Reset explicitly disables each override.
+
+A standard flag rejected `variants: []` in the override entry with HTTP 400 and the message `Feature is not multivariate.` Omitting the empty field made the reset succeed.

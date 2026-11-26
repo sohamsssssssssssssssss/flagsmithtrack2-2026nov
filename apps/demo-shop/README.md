@@ -5,7 +5,7 @@ Lumen Shop is the demo storefront monitored by Blast Radius. Use Node 20.19+ on 
 From the repository root, install the shop dependencies and start both servers.
 
 ```sh
-pnpm --filter @blast/shop-api --filter @blast/shop-web install --lockfile=false
+pnpm install
 pnpm --filter demo-shop dev
 pnpm --filter demo-shop test
 ```

@@ -9,20 +9,20 @@ Docs:
 - [02 Tech Spec](docs/02_TECH_SPEC.md)
 - [03 Build Plan and Tracker](docs/03_BUILD_PLAN.md)
 
-Status: P1 scaffold. Apps are hello-world stubs; the shared contract lives in `packages/shared`.
+## Run the demo
 
-## Dev
-
-Needs Node 20+ and corepack (`corepack enable`).
+Use Node 20.19+ on the Node 20 line, or Node 22.12+.
 
 ```sh
 pnpm i
-cp .env.example .env               # fill in the keys
-pnpm seed                          # idempotent: creates the 5 demo flags + beta_cohort segment, writes config/flags.json
-pnpm llm-check                     # lists models at LLM_BASE_URL and tries one chat call
-pnpm dev                           # everything, in parallel
-pnpm build && pnpm test && pnpm lint
+cp .env.example .env   # for a new checkout
 ```
+
+Fill in the Development admin key, public environment key, and server-side SDK key in `.env`. For a new Flagsmith project, run `pnpm seed` to create the flags and beta segment.
+
+Run `pnpm demo:up` to start the agent, shop API, storefront, and dashboard. In another terminal, run `pnpm traffic` for 300 simulated identities at 8 requests per second.
+
+After 60 seconds of baseline traffic, run `node scripts/demo-break.mjs` and approve the beta-only checkout change. Wait 90 seconds and inspect `/api/metrics` on port 4000. Run `node scripts/demo-reset.mjs` and approve the reset. The scripts re-read each write and append the before/after state to `.blast/audit.jsonl`. In a non-interactive shell use `--yes` to explicitly approve the operation.
 
 | app | package | port |
 |---|---|---|
