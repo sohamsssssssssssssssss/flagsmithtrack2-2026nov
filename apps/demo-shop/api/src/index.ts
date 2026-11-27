@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { loadEnvFile } from "node:process";
 import { PORTS, type FlagSnapshot } from "@blast/shared";
@@ -7,6 +9,8 @@ import { createTelemetry, REQUEST_BUCKET_MS } from "./telemetry.js";
 
 const env = new URL("../../../../.env", import.meta.url);
 if (existsSync(env)) loadEnvFile(env);
+// Recorded at startup so /api/version reports the commit this process actually runs.
+process.env.SHOP_GIT_SHA ??= execFileSync("git", ["rev-parse", "HEAD"], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), encoding: "utf8" }).trim();
 
 const key = process.env.FLAGSMITH_SERVER_KEY;
 const defaultFlagHandler = () => new DefaultFlag(null, false);

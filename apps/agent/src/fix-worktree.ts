@@ -131,6 +131,9 @@ export function fixWorktree(options: {
   }
 
   async function publish(files: string[], title: string, body: string, attempt: number, authorize: () => Promise<void>) {
+    // Fix PRs target the demo branch; main is never a PR base for this agent.
+    const base = process.env.FIX_PR_BASE?.trim() || "demo";
+    if (base === "main") throw new Error("FIX_PR_BASE must not be main");
     // Accept only the repository configured for this workspace and keep publishing credentials out of validation.
     const remote = (await command(root, "git", ["remote", "get-url", "origin"])).trim();
     if (![ `https://github.com/${repo}`, `https://github.com/${repo}.git`,
@@ -153,7 +156,7 @@ export function fixWorktree(options: {
       await authorize();
       const path = join(directory, ".blast", "pr.md");
       await writeFile(path, body, { mode: 0o600 });
-      const url = (await command(directory, "gh", ["pr", "create", "--repo", repo, "--base", "main", "--head", branch,
+      const url = (await command(directory, "gh", ["pr", "create", "--repo", repo, "--base", base, "--head", branch,
         "--title", title, "--body-file", path], 60_000, publishEnv)).trim();
       if (!url.startsWith(`https://github.com/${repo}/pull/`) || !/\/pull\/\d+$/.test(url)) {
         throw new Error("GitHub did not return a pull request URL");

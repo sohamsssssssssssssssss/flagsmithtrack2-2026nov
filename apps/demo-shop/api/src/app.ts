@@ -29,6 +29,8 @@ export function buildApp(evaluate: Evaluate, telemetry = createTelemetry()): Exp
 
   app.use(express.json());
   app.get("/api/health", (_req, res) => { res.json({ ok: true, demo: true }); });
+  // The commit this process was started from; the agent compares it with the demo checkout before a rollout.
+  app.get("/api/version", (_req, res) => { res.json({ sha: process.env.SHOP_GIT_SHA ?? "unknown" }); });
   app.get("/api/products", (_req, res) => { res.json(products); });
   app.get("/api/search", (req, res) => {
     const query = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";

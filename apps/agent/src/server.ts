@@ -82,6 +82,11 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
       app.get("/api/map", (_req, reply) => flagMap.get() ?? reply.code(503).send({ message: "Flag map is being generated" }));
       app.post("/api/map/refresh", () => flagMap.refresh());
     }
+    app.post<{ Params: { id: string }; Body: { requested_by: string } }>("/api/actions/:id/recheck", {
+      schema: { body: { type: "object", required: ["requested_by"], properties: {
+        requested_by: { type: "string", pattern: "\\S", maxLength: 200 },
+      } } },
+    }, (req) => incidents.recheck(Number(req.params.id), req.body.requested_by.trim()));
     app.get("/api/incidents", () => incidents.list().map((item) =>
       ({ ...item, rollout_status: workflow.rollouts?.status(item.id) ?? null })));
     app.get<{ Params: { id: string } }>("/api/incidents/:id", (req) => {
@@ -90,11 +95,7 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
     });
     if (workflow.rollouts) {
       const rollouts = workflow.rollouts;
-      app.post<{ Params: { id: string }; Body: { confirmed_fix: boolean } }>("/api/incidents/:id/rollout", {
-        schema: { body: { type: "object", required: ["confirmed_fix"], properties: {
-          confirmed_fix: { type: "boolean", const: true },
-        } } },
-      }, (req) => rollouts.start(Number(req.params.id), req.body.confirmed_fix));
+      app.post<{ Params: { id: string } }>("/api/incidents/:id/rollout", (req) => rollouts.start(Number(req.params.id)));
       app.post<{ Params: { id: string }; Body: { requested_by: string } }>("/api/incidents/:id/rollout/requeue", {
         schema: { body: { type: "object", required: ["requested_by"], properties: {
           requested_by: { type: "string", pattern: "\\S", maxLength: 200 },

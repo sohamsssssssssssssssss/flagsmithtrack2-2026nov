@@ -18,6 +18,7 @@ function fixture() {
   let state: FlagLiveState = { enabled: false, value: null, overrides: [] };
   let segment: RolloutSnapshot["segment"] = null;
   let failVerify = false;
+  let shopVersion = "abc1234";
   const client = {
     getState: async () => state,
     getRolloutSnapshot: async () => ({ state, segment }),
@@ -40,7 +41,8 @@ function fixture() {
     }),
   };
   const proposals = buildProposals(db, client, "Development", bus, log, () => time);
-  const rollouts = buildRollouts(db, proposals, bus, 30_000, log, () => time);
+  const versions = { shop: async () => shopVersion, local: async () => "abc1234" };
+  const rollouts = buildRollouts(db, proposals, bus, 30_000, log, () => time, versions);
   db.prepare("INSERT INTO incidents(id,opened_ts,status,evidence_json) VALUES (1,0,'closed',?)")
     .run(JSON.stringify({ route: "/checkout", start: 0, end: 20_000 }));
   db.prepare(`INSERT INTO proposals(id,incident_id,kind,payload_json,snapshot_hash,created_ts,expires_ts,status)
@@ -55,7 +57,7 @@ function fixture() {
     }
     time = start + 32_500;
   }
-  return { client, log, db, proposals, rollouts, samples, now: () => time, advance: (ms: number) => { time += ms; },
+  return { client, log, db, proposals, rollouts, samples, setShopVersion: (sha: string) => { shopVersion = sha; }, now: () => time, advance: (ms: number) => { time += ms; },
     failVerification: () => { failVerify = true; } };
 }
 
@@ -70,8 +72,7 @@ it("checks the ratio, spike, and telemetry coverage", () => {
 
 it("requires separate approval at each hold and uses the 50% control at 100%", async () => {
   const { client, proposals, rollouts, samples } = fixture();
-  await expect(rollouts.start(1, false)).rejects.toThrow("Confirm the fix");
-  await rollouts.start(1, true);
+  await rollouts.start(1);
   for (const [index, stage] of ([10, 50, 100] as const).entries()) {
     await rollouts.tick();
     const pending = rollouts.get(1)!.stages.find((item) => item.stage === stage)!;
@@ -90,7 +91,7 @@ it("requires separate approval at each hold and uses the 50% control at 100%", a
 
 it("pauses and proposes a disable after a failed gate", async () => {
   const { client, proposals, rollouts, samples } = fixture();
-  const plan = await rollouts.start(1, true);
+  const plan = await rollouts.start(1);
   await proposals.approve(plan!.stages[0]!.proposal_id, "reviewer");
   samples(10, 1);
   await rollouts.tick();
@@ -104,7 +105,7 @@ it("pauses and proposes a disable after a failed gate", async () => {
 
 it("marks a verification failure PARTIAL and prevents promotion", async () => {
   const { client, proposals, rollouts, failVerification } = fixture();
-  const plan = await rollouts.start(1, true);
+  const plan = await rollouts.start(1);
   failVerification();
   await expect(proposals.approve(plan!.stages[0]!.proposal_id, "reviewer")).rejects.toThrow("PARTIAL");
   await rollouts.tick();
@@ -123,14 +124,14 @@ it("refuses to hide unrelated overrides or skip the previous percentage", () => 
 
 it("gives each stage approval a 30-minute window", async () => {
   const { rollouts } = fixture();
-  const plan = await rollouts.start(1, true);
+  const plan = await rollouts.start(1);
   const stage = plan!.stages[0]!;
   expect(stage.expires_ts - (100_000 + 0)).toBe(STAGE_APPROVAL_MS);
 });
 
 it("re-queues an expired stage with a new expiry and audit log, and does not re-pause on the old record", async () => {
   const { client, log, proposals, rollouts, advance } = fixture();
-  const plan = await rollouts.start(1, true);
+  const plan = await rollouts.start(1);
   const first = plan!.stages[0]!;
   advance(STAGE_APPROVAL_MS + 1);
   await rollouts.tick();
@@ -150,7 +151,7 @@ it("re-queues an expired stage with a new expiry and audit log, and does not re-
 
 it("refuses to re-queue a rollout that is not paused on an expired stage", async () => {
   const { rollouts, proposals, samples } = fixture();
-  await rollouts.start(1, true);
+  await rollouts.start(1);
   await expect(rollouts.requeue(1, "tester")).rejects.toThrow("Only a paused rollout");
   const plan = rollouts.get(1)!;
   await proposals.approve(plan.stages[0]!.proposal_id, "reviewer");
@@ -164,7 +165,7 @@ it("refuses to re-queue a rollout that is not paused on an expired stage", async
 
 it("waits up to 3x the hold before failing a stage with too little telemetry, then re-queues it", async () => {
   const { client, log, db, proposals, rollouts, advance, now } = fixture();
-  const plan = await rollouts.start(1, true);
+  const plan = await rollouts.start(1);
   await proposals.approve(plan!.stages[0]!.proposal_id, "reviewer");
   // One bucket of flag-on traffic and no comparison cohort: the gate cannot compare.
   db.prepare("INSERT INTO requests(ts_bucket,route,flag_key,flag_on,count,errors) VALUES (110000,'/checkout','checkout',1,12,0)").run();
@@ -185,7 +186,7 @@ it("waits up to 3x the hold before failing a stage with too little telemetry, th
 
 it("refuses to re-queue a stage that failed on real errors", async () => {
   const { rollouts, proposals, samples } = fixture();
-  const plan = await rollouts.start(1, true);
+  const plan = await rollouts.start(1);
   await proposals.approve(plan!.stages[0]!.proposal_id, "reviewer");
   samples(10, 1);
   await rollouts.tick();
@@ -201,4 +202,27 @@ it("accepts stage 10 when the 10% rollout is already live", () => {
   const live = { state: { enabled: false, value: null, overrides: [{ segment_id: 19, enabled: true, value: null }] }, segment: { id: 19, percentage: 10 } };
   expect(canApplyRollout(live, 10)).toBe(true);
   expect(canApplyRollout({ ...live, segment: { id: 19, percentage: 50 } }, 10)).toBe(false);
+});
+
+it("starts only from the latest verification of the disable", async () => {
+  const { db, rollouts } = fixture();
+  db.prepare("UPDATE actions SET outcome='not_recovered' WHERE id=1").run();
+  db.prepare("INSERT INTO verifications(action_id,ts,outcome,requests,trigger) VALUES (1,1,'not_recovered',100,'auto')").run();
+  db.prepare("INSERT INTO verifications(action_id,ts,outcome,requests,trigger) VALUES (1,2,'recovered',100,'manual')").run();
+  await expect(rollouts.start(1)).resolves.toMatchObject({ status: "active" });
+});
+
+it("refuses to start while the latest verification is not_recovered, even after an older recovery", async () => {
+  const { db, rollouts } = fixture();
+  db.prepare("INSERT INTO verifications(action_id,ts,outcome,requests,trigger) VALUES (1,1,'recovered',100,'auto')").run();
+  db.prepare("INSERT INTO verifications(action_id,ts,outcome,requests,trigger) VALUES (1,2,'not_recovered',100,'manual')").run();
+  await expect(rollouts.start(1)).rejects.toThrow("A verified disable and recovery are required");
+});
+
+it("refuses to start while the shop runs a different commit than the demo checkout", async () => {
+  const { rollouts, setShopVersion } = fixture();
+  setShopVersion("0ldcommit");
+  await expect(rollouts.start(1)).rejects.toThrow("run demo-restart-shop first");
+  setShopVersion("abc1234");
+  await expect(rollouts.start(1)).resolves.toMatchObject({ status: "active" });
 });

@@ -6,6 +6,8 @@ import { compareRates, type Sample } from "./fisher.js";
 import type { RolloutStage } from "./flagsmith.js";
 import { aggregate, BUCKET_MS, type RequestRow } from "./metrics.js";
 import { DecisionError, type buildProposals } from "./proposals.js";
+import { localSha, shopSha, type Versions } from "./version.js";
+import { ROOT } from "./config.js";
 
 const stages = [10, 50, 100] as const;
 type Plan = {
@@ -28,7 +30,8 @@ export function healthGate(on: Sample, off: Sample, spike: boolean, coverage: bo
 }
 
 export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposals>, bus: EventEmitter,
-  holdMs = 120_000, log = audit, now = Date.now) {
+  holdMs = 120_000, log = audit, now = Date.now,
+  versions: Versions = { shop: () => shopSha(), local: () => localSha(ROOT) }) {
   const initializing = new Set<number>();
   const plans = db.prepare("SELECT * FROM rollouts WHERE incident_id=?");
   const records = db.prepare(`SELECT p.id AS proposal_id,p.status,p.expires_ts,json_extract(p.payload_json,'$.stage') AS stage,
@@ -44,13 +47,20 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
     return { ...plan, stages: rows, rollback: rollback ?? null };
   }
 
-  async function start(id: number, confirmed: boolean) {
-    if (!confirmed) throw new DecisionError("Confirm the fix is merged and the shop restarted", 400);
+  async function start(id: number) {
+    // The shop must run the same commit as the demo checkout, so a rollout never re-enables an unfixed shop.
+    const [shop, local] = await Promise.all([versions.shop(), versions.local()]).catch(() => {
+      throw new DecisionError("Could not read the shop version; start the shop and try again", 503);
+    });
+    if (shop !== local) {
+      throw new DecisionError(`The shop runs ${shop.slice(0, 7)} but the demo checkout is at ${local.slice(0, 7)}; run demo-restart-shop first`, 409);
+    }
     const incident = db.prepare("SELECT evidence_json,status FROM incidents WHERE id=?").get(id) as
       { evidence_json: string; status: string } | undefined;
     if (!incident || incident.status !== "closed") throw new DecisionError("A closed incident is required");
     const source = db.prepare(`SELECT p.payload_json FROM proposals p JOIN actions a ON a.proposal_id=p.id
-      WHERE p.incident_id=? AND p.kind='disable_flag' AND p.status='approved' AND a.outcome='recovered'
+      WHERE p.incident_id=? AND p.kind='disable_flag' AND p.status='approved'
+        AND COALESCE((SELECT v.outcome FROM verifications v WHERE v.action_id=a.id ORDER BY v.id DESC LIMIT 1), a.outcome)='recovered'
       ORDER BY a.id DESC LIMIT 1`).get(id) as { payload_json: string } | undefined;
     if (!source) throw new DecisionError("A verified disable and recovery are required");
     const { flag, feature_id } = JSON.parse(source.payload_json) as { flag: string; feature_id: number };

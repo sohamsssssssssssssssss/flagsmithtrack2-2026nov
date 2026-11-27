@@ -2,6 +2,7 @@ import type { EventEmitter } from "node:events";
 import { audit } from "./audit.js";
 import type { DB } from "./db.js";
 import { detectSpike, recovered, RECOVERY_MS } from "./detector.js";
+import { assessRecovery, recordVerification } from "./recovery.js";
 import { aggregate, BUCKET_MS, type RequestRow } from "./metrics.js";
 import { DecisionError, type buildProposals } from "./proposals.js";
 import { rankFlags, readFlagFiles, type Failure, type RecentChange } from "./ranker.js";
@@ -94,17 +95,28 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
       FROM actions a JOIN proposals p ON p.id=a.proposal_id JOIN incidents i ON i.id=p.incident_id
       WHERE a.outcome='watching'`).all() as { id: number; verified_ts: number; incident_id: number; evidence_json: string }[];
     for (const action of watching) {
-      const recoveryEnd = Math.ceil(action.verified_ts / BUCKET_MS) * BUCKET_MS + RECOVERY_MS;
-      if (completeEnd < recoveryEnd) continue;
       const evidence = JSON.parse(action.evidence_json) as Spike;
       const buckets = evidence.route ? by_route[evidence.route] ?? [] : overall;
-      const outcome = recovered(buckets, recoveryEnd, evidence.baseline.rate!) ? "recovered" : "not_recovered";
-      db.prepare("UPDATE actions SET outcome=?,outcome_ts=? WHERE id=?").run(outcome, now(), action.id);
-      const event = { id: action.id, incident_id: action.incident_id, outcome };
-      log("action_outcome", event);
-      bus.emit("action_done", event);
+      const assessment = assessRecovery(buckets, action.verified_ts, evidence.baseline.rate!, now());
+      if (assessment.outcome !== "watching") recordVerification(db, bus, log, action.id, assessment, "auto", null, now());
     }
     proposals.expire();
+  }
+
+  /** Appends a new verification record for a disable. Earlier records stay; the window starts at the disable. */
+  function recheck(actionId: number, actor: string) {
+    const row = db.prepare(`SELECT a.ts, p.incident_id, i.evidence_json FROM actions a
+      JOIN proposals p ON p.id=a.proposal_id JOIN incidents i ON i.id=p.incident_id
+      WHERE a.id=? AND p.kind='disable_flag'`).get(actionId) as { ts: number; incident_id: number; evidence_json: string } | undefined;
+    if (!row) throw new DecisionError("Disable action not found", 404);
+    const evidence = JSON.parse(row.evidence_json) as Spike;
+    const end = Math.floor((now() - 500) / 2_000) * 2_000;
+    const rows = requests.all(end - 900_000, end) as RequestRow[];
+    const { overall, by_route } = aggregate(rows);
+    const buckets = evidence.route ? by_route[evidence.route] ?? [] : overall;
+    const assessment = assessRecovery(buckets, row.ts, evidence.baseline.rate!, now());
+    recordVerification(db, bus, log, actionId, assessment, "manual", actor, now());
+    return { action_id: actionId, incident_id: row.incident_id, ...assessment };
   }
 
   function start() {
@@ -146,5 +158,5 @@ export function buildIncidents(db: DB, proposals: ReturnType<typeof buildProposa
     return proposals.create(id, evidence);
   }
 
-  return { start, tick, list, get, pick };
+  return { start, tick, list, get, pick, recheck };
 }

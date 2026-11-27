@@ -40,6 +40,10 @@ const MIGRATIONS = [
      proposal_id INTEGER PRIMARY KEY REFERENCES proposals(id), status TEXT NOT NULL,
      model TEXT, diff TEXT, pr_url TEXT, steps_json TEXT NOT NULL DEFAULT '[]', reason TEXT
    );`,
+  `CREATE TABLE verifications(
+     id INTEGER PRIMARY KEY, action_id INTEGER NOT NULL REFERENCES actions(id), ts INTEGER NOT NULL,
+     outcome TEXT NOT NULL, reason TEXT, requests INTEGER NOT NULL, trigger TEXT NOT NULL, actor TEXT);
+   CREATE INDEX verifications_by_action ON verifications(action_id, id);`,
 ];
 
 export function openDb(path: string): DB {

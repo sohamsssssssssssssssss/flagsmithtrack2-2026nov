@@ -13,15 +13,15 @@ exports[`snapshots the real shop's checkout mapping 1`] = `
       "flag": "new_checkout",
       "function": "priceCart",
       "function_range": {
-        "end_line": 75,
-        "start_line": 54,
+        "end_line": 77,
+        "start_line": 56,
       },
       "guard": {
-        "end_line": 73,
+        "end_line": 75,
         "kind": "ternary",
-        "start_line": 72,
+        "start_line": 74,
       },
-      "line": 71,
+      "line": 73,
       "routes": [
         "/api/checkout",
       ],
@@ -40,7 +40,7 @@ exports[`snapshots the real shop's checkout mapping 1`] = `
       "routes": [
         "/api/checkout",
       ],
-      "via": "apps/demo-shop/api/src/app.ts:71",
+      "via": "apps/demo-shop/api/src/app.ts:73",
     },
   ],
   "routes": [
