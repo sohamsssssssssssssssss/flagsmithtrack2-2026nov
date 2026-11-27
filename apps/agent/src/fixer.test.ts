@@ -85,3 +85,13 @@ it("records why a step failed", async () => {
   await expect(measure(({ step }) => steps.push(step), "Tests", 1, async () => { throw new Error("pnpm test failed: x"); })).rejects.toThrow();
   expect(steps.at(-1)).toMatchObject({ status: "failed", reason: "pnpm test failed: x" });
 });
+
+it("reports every attempt's diff, including rejected ones", async () => {
+  const other = patch("package.json", "-old\n+new");
+  const { client } = await model([other, good, good]);
+  const seen: { diff?: string; attempt?: number }[] = [];
+  const validate = vi.fn().mockRejectedValueOnce(new Error("pnpm test failed")).mockResolvedValue(undefined);
+  await findSafePatch([file], (reason) => client.patch("Flag", reason), validate, ({ diff, attempt }) => diff && seen.push({ diff, attempt }));
+  expect(seen.map((s) => s.attempt)).toEqual([1, 2, 3]);
+  expect(seen[0]!.diff).toContain("package.json");
+});

@@ -97,15 +97,19 @@ export function buildFixJobs(db: DB, client: Pick<FlagsmithClient, "getState">,
     sample: SavedError, authorize: () => Promise<void>, action: number) {
     const steps: FixStep[] = [];
     let publishing = false;
-    const progress: Progress = ({ step, diff }) => {
+    const progress: Progress = ({ step, diff, attempt }) => {
+      const patchStep = steps.find((entry) => entry.name === "LLM patch" && entry.attempt === attempt);
+      if (diff && patchStep) patchStep.diff = diff;
       if (step) {
         if (step.status === "running") steps.push(step);
         else {
           const index = steps.findIndex((entry) => entry.name === step.name && entry.attempt === step.attempt);
-          steps[index] = step;
+          steps[index] = { ...step, diff: steps[index]?.diff };
         }
+      }
+      if (step || patchStep) {
         db.prepare("UPDATE fix_jobs SET steps_json=? WHERE proposal_id=?").run(JSON.stringify(steps), p.id);
-        log("fix_step", { proposal_id: p.id, ...step });
+        if (step) log("fix_step", { proposal_id: p.id, ...step });
       }
       if (diff) db.prepare("UPDATE fix_jobs SET diff=? WHERE proposal_id=?").run(diff, p.id);
       bus.emit("action_done", { incident_id: p.incident_id, outcome: "fix_progress" });

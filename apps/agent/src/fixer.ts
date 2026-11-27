@@ -1,8 +1,8 @@
 import { relative, resolve } from "node:path";
 import type { FlagMap } from "@blast/mapper";
 
-export type FixStep = { name: string; attempt: number; status: "running" | "passed" | "failed"; ms?: number; reason?: string };
-export type FixProgress = { step?: FixStep; diff?: string };
+export type FixStep = { name: string; attempt: number; status: "running" | "passed" | "failed"; ms?: number; reason?: string; diff?: string };
+export type FixProgress = { step?: FixStep; diff?: string; attempt?: number };
 export type Progress = (update: FixProgress) => void;
 
 export function redactFixText(text: string) {
@@ -133,8 +133,8 @@ export async function findSafePatch(allowed: string[], requestPatch: (feedback: 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const diff = await measure(progress, "LLM patch", attempt, () => requestPatch(reasons.at(-1) ?? ""));
+      progress({ diff, attempt }); // saved before checks so rejected attempts stay inspectable
       const paths = patchFiles(diff, allowed);
-      progress({ diff });
       await validate(diff, paths, attempt);
       return { diff, paths, attempt };
     } catch (error) {
