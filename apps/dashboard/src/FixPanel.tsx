@@ -32,7 +32,7 @@ export function FixPanel({ job, now, decide }: Props) {
       catch (failure) { setError(failure instanceof Error ? failure.message : "Fix decision failed"); }
       finally { setBusy(false); }
     }}>
-      <p className="muted">Approval uses Grok to propose a patch and can open a GitHub PR if validation passes.</p>
+      <p className="muted">Approval asks the LLM to propose a patch and can open a GitHub PR if validation passes.</p>
       <label htmlFor="fix-approver">Fix approver name</label>
       <input id="fix-approver" value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} />
       <div><button className="primary" value="approve" disabled={busy || !name.trim()}>Approve fix attempt</button>

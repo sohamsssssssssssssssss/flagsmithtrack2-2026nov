@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { createFixModel, findSafePatch, fixContext, patchFiles, projectFrames } from "./fixer.js";
+import { createFixModel, findSafePatch, fixContext, normalizeDiff, patchFiles, projectFrames } from "./fixer.js";
 
 const file = "apps/demo-shop/api/src/checkout/applyDiscount.ts";
 const patch = (path: string, lines: string) =>
@@ -63,4 +63,19 @@ it("caps mapped context and keeps only project stack frames", async () => {
     function_range: { start_line: 1, end_line: 250 }, routes: ["/api/checkout"], confidence: "high",
   }] }, "TypeError", frames, async () => lines.join("\n"));
   expect(text.split("\n").filter((line) => line.startsWith("source "))).toHaveLength(200);
+});
+
+it("reports an LLM timeout as a failed attempt without validating", async () => {
+  const request = vi.fn<typeof fetch>((_, init) => new Promise((_, reject) =>
+    init?.signal?.addEventListener("abort", () => reject(init.signal!.reason))));
+  const client = await createFixModel({ base: "https://example.test/v1", key: "test-auth", model: "m" }, request, 20);
+  const validate = vi.fn();
+  await expect(findSafePatch([file], (reason) => client.patch("Flag", reason), validate, () => {}))
+    .rejects.toThrow("Attempt 3: LLM request timed out");
+  expect(validate).not.toHaveBeenCalled();
+});
+
+it("normalizes fenced, header-less model output into a git diff", () => {
+  const raw = "<think>hmm</think>\n```diff\n--- a/" + file + "\n+++ b/" + file + "\n@@ -1 +1 @@\n-a\n+b\n```";
+  expect(patchFiles(normalizeDiff(raw), [file])).toEqual([file]);
 });

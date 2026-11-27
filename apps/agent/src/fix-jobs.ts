@@ -131,20 +131,28 @@ export function buildFixJobs(db: DB, client: Pick<FlagsmithClient, "getState">,
       publishing = true;
       const e = payload.evidence;
       const rate = (value: number | null) => value === null ? "unavailable" : (100 * value).toFixed(2) + "%";
+      const fn = frames[0]?.split(" ")[0] ?? "checkout";
+      const title = redactFixText(`Fix: ${fn} crash on the ${payload.flag} path`).slice(0, 120);
+      const counts = (prefix: string) => result.diff.split("\n").filter((l) => l.startsWith(prefix) && !l.startsWith(prefix.repeat(3))).length;
+      const timing = steps.filter((s) => s.attempt === result.attempt || s.attempt === 0)
+        .map((s) => `- ${s.name}: ${s.status} in ${((s.ms ?? 0) / 1_000).toFixed(2)}s`);
       const body = redactFixText([
         "## Incident evidence", "",
-        `- Flag: ${payload.flag}`,
+        `- Flag: \`${payload.flag}\``,
         `- Flag on: ${e.on.errors}/${e.on.requests} errors (${rate(e.on.rate)})`,
         `- Flag off: ${e.off.errors}/${e.off.requests} errors (${rate(e.off.rate)})`,
         `- Error: ${sample.message.slice(0, 500)}`, "",
-        "Project stack", ...frames.map((line) => "    " + line), "",
-        "## Diff and validation", "",
-        ...result.paths.map((file) => "- Updated " + file),
-        "- Build and tests passed in an isolated worktree.",
-        "- Saved checkout replay returned 2xx with the flag forced on.", "",
-        `Found by Blast Radius; flag ${payload.flag} currently OFF`,
+        "Project stack:", ...frames.map((line) => "    " + line), "",
+        "## Diff summary", "",
+        `${result.paths.length} file(s), +${counts("+")} / -${counts("-")} lines (LLM ${model.model}, attempt ${result.attempt} of 3):`,
+        ...result.paths.map((file) => "- " + file), "",
+        "```diff", result.diff.trimEnd(), "```", "",
+        "## Validation (isolated git worktree)", "",
+        ...timing,
+        `- Replay: saved failing checkout (error #${sample.id}) returned 2xx with \`${payload.flag}\` forced ON locally.`, "",
+        `Found by Blast Radius; flag \`${payload.flag}\` currently OFF in Flagsmith. Not merged automatically: review before merging.`,
       ].join("\n"));
-      pr = await work.publish(result.paths, body, result.attempt, authorize);
+      pr = await work.publish(result.paths, title, body, result.attempt, authorize);
       status = "pr_open";
     } catch (error) {
       status = publishing ? "publish_failed" : "no_safe_fix";

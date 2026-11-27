@@ -102,14 +102,14 @@ export function fixWorktree(options: {
       await command(directory, "git", ["reset", "--hard", base]);
       await command(directory, "git", ["clean", "-fd"]);
       await writeFile(patch, diff, { mode: 0o600 });
-      const stats = (await command(directory, "git", ["apply", "--numstat", "-z", patch])).split("\0").filter(Boolean);
+      const stats = (await command(directory, "git", ["apply", "--recount", "--numstat", "-z", patch])).split("\0").filter(Boolean);
       const parsed = stats.map((line) => line.split("\t"));
       if (parsed.length !== files.length || parsed.some(([adds, removes, name]) =>
         !/^\d+$/.test(adds ?? "") || !/^\d+$/.test(removes ?? "") || !files.includes(name ?? ""))
         || parsed.reduce((n, [a, b]) => n + Number(a) + Number(b), 0) > 40) throw new Error("Git reported a patch outside the mapped source limit");
       try {
-        await command(directory, "git", ["apply", "--check", patch]);
-        await command(directory, "git", ["apply", patch]);
+        await command(directory, "git", ["apply", "--recount", "--check", patch]);
+        await command(directory, "git", ["apply", "--recount", patch]);
       } catch { throw new Error("The unified diff did not apply to the committed source"); }
     });
     for (const name of ["build", "test"]) {
@@ -130,7 +130,7 @@ export function fixWorktree(options: {
     }
   }
 
-  async function publish(files: string[], body: string, attempt: number, authorize: () => Promise<void>) {
+  async function publish(files: string[], title: string, body: string, attempt: number, authorize: () => Promise<void>) {
     // Accept only the repository configured for this workspace and keep publishing credentials out of validation.
     const remote = (await command(root, "git", ["remote", "get-url", "origin"])).trim();
     if (![ `https://github.com/${repo}`, `https://github.com/${repo}.git`,
@@ -140,21 +140,21 @@ export function fixWorktree(options: {
     const publishEnv = { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" };
     await authorize();
     await measure(progress, "Push branch", attempt, async () => {
-      if (await command(directory, "git", ["ls-remote", "--heads", "origin", branch], 10_000, publishEnv)) {
+      if (await command(directory, "git", ["ls-remote", "--heads", "origin", branch], 30_000, publishEnv)) {
         throw new Error("The fix branch already exists on GitHub");
       }
       await command(directory, "git", ["switch", "-c", branch]);
       await command(directory, "git", ["add", "--", ...files]);
-      await command(directory, "git", ["commit", "-m", `Fix: Correct the ${flag} checkout path`]);
+      await command(directory, "git", ["commit", "-m", title]);
       await authorize();
-      await command(directory, "git", ["push", "origin", `HEAD:refs/heads/${branch}`], 10_000, publishEnv);
+      await command(directory, "git", ["push", "origin", `HEAD:refs/heads/${branch}`], 60_000, publishEnv);
     });
     return measure(progress, "Open PR", attempt, async () => {
       await authorize();
       const path = join(directory, ".blast", "pr.md");
       await writeFile(path, body, { mode: 0o600 });
       const url = (await command(directory, "gh", ["pr", "create", "--repo", repo, "--base", "main", "--head", branch,
-        "--title", `Fix: Correct the ${flag} checkout path`, "--body-file", path], 10_000, publishEnv)).trim();
+        "--title", title, "--body-file", path], 60_000, publishEnv)).trim();
       if (!url.startsWith(`https://github.com/${repo}/pull/`) || !/\/pull\/\d+$/.test(url)) {
         throw new Error("GitHub did not return a pull request URL");
       }
