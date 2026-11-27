@@ -1,7 +1,7 @@
 import { relative, resolve } from "node:path";
 import type { FlagMap } from "@blast/mapper";
 
-export type FixStep = { name: string; attempt: number; status: "running" | "passed" | "failed"; ms?: number };
+export type FixStep = { name: string; attempt: number; status: "running" | "passed" | "failed"; ms?: number; reason?: string };
 export type FixProgress = { step?: FixStep; diff?: string };
 export type Progress = (update: FixProgress) => void;
 
@@ -120,7 +120,9 @@ export async function measure<T>(progress: Progress, name: string, attempt: numb
     progress({ step: { name, attempt, status: "passed", ms: Date.now() - start } });
     return result;
   } catch (error) {
-    progress({ step: { name, attempt, status: "failed", ms: Date.now() - start } });
+    const problem = error as { message?: string; cmd?: string };
+    const reason = problem.cmd ? "A required command failed" : redactFixText(String(problem.message ?? error)).slice(0, 300);
+    progress({ step: { name, attempt, status: "failed", ms: Date.now() - start, reason } });
     throw error;
   }
 }

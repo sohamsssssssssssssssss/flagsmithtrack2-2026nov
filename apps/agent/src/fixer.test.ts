@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { createFixModel, findSafePatch, fixContext, normalizeDiff, patchFiles, projectFrames } from "./fixer.js";
+import { createFixModel, findSafePatch, fixContext, measure, normalizeDiff, patchFiles, projectFrames } from "./fixer.js";
 
 const file = "apps/demo-shop/api/src/checkout/applyDiscount.ts";
 const patch = (path: string, lines: string) =>
@@ -78,4 +78,10 @@ it("reports an LLM timeout as a failed attempt without validating", async () => 
 it("normalizes fenced, header-less model output into a git diff", () => {
   const raw = "<think>hmm</think>\n```diff\n--- a/" + file + "\n+++ b/" + file + "\n@@ -1 +1 @@\n-a\n+b\n```";
   expect(patchFiles(normalizeDiff(raw), [file])).toEqual([file]);
+});
+
+it("records why a step failed", async () => {
+  const steps: unknown[] = [];
+  await expect(measure(({ step }) => steps.push(step), "Tests", 1, async () => { throw new Error("pnpm test failed: x"); })).rejects.toThrow();
+  expect(steps.at(-1)).toMatchObject({ status: "failed", reason: "pnpm test failed: x" });
 });

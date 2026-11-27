@@ -41,7 +41,7 @@ export function FixPanel({ job, now, decide }: Props) {
     {job.model && <small className="muted">Model <code>{job.model}</code></small>}
     {job.steps.length > 0 && <ol className="steps" aria-label="Fix validation progress">
       {job.steps.map((step) => <li key={`${step.attempt}-${step.name}`} className={step.status === "passed" ? "done" : step.status === "failed" ? "failed" : ""}>
-        {step.name}{step.attempt > 1 ? ` · attempt ${step.attempt}` : ""}{step.ms == null ? "…" : ` · ${(step.ms / 1_000).toFixed(2)}s`}
+        {step.name}{step.attempt > 1 ? ` · attempt ${step.attempt}` : ""}{step.ms == null ? "…" : ` · ${(step.ms / 1_000).toFixed(2)}s`}{step.reason && <small className="muted"> · {step.reason}</small>}
       </li>)}
     </ol>}
     {job.pr_url && <a className="fix-link" href={job.pr_url} target="_blank" rel="noreferrer">View open pull request ↗</a>}
