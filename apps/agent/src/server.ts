@@ -95,6 +95,11 @@ export function buildServer(db: DB, bus = new EventEmitter(), workflow?: {
           confirmed_fix: { type: "boolean", const: true },
         } } },
       }, (req) => rollouts.start(Number(req.params.id), req.body.confirmed_fix));
+      app.post<{ Params: { id: string }; Body: { requested_by: string } }>("/api/incidents/:id/rollout/requeue", {
+        schema: { body: { type: "object", required: ["requested_by"], properties: {
+          requested_by: { type: "string", pattern: "\\S", maxLength: 200 },
+        } } },
+      }, (req) => rollouts.requeue(Number(req.params.id), req.body.requested_by.trim()));
     }
     app.post<{ Params: { id: string }; Body: { flag: string } }>("/api/incidents/:id/propose", {
       schema: { body: { type: "object", required: ["flag"], properties: { flag: { type: "string", minLength: 1, maxLength: 200 } } } },

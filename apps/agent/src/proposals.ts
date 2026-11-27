@@ -30,6 +30,8 @@ export function snapshotHash(incident: number, feature: number, state: FlagLiveS
 const rolloutHash = (incident: number, feature: number, snapshot: RolloutSnapshot) =>
   createHash("sha256").update(JSON.stringify([snapshotHash(incident, feature, snapshot.state), snapshot.segment])).digest("hex");
 
+// A human clicks each rollout stage, so stage approvals stay open for 30 minutes.
+export const STAGE_APPROVAL_MS = 30 * 60_000;
 const decodeProposal = ({ payload_json, created_ts, expires_ts, ...row }: Proposal) =>
   ({ ...row, ...JSON.parse(payload_json), created: created_ts, expires: expires_ts });
 
@@ -61,7 +63,8 @@ export function buildProposals(db: DB, client: Client, env: string, bus: EventEm
   function enqueue(incident: number, kind: Kind, payload: Payload, hash: string) {
     const created = now();
     const result = db.prepare(`INSERT OR IGNORE INTO proposals(incident_id,kind,payload_json,snapshot_hash,created_ts,expires_ts,status)
-      VALUES (?,?,?,?,?,?,'pending')`).run(incident, kind, JSON.stringify(payload), hash, created, created + 600_000);
+      VALUES (?,?,?,?,?,?,'pending')`).run(incident, kind, JSON.stringify(payload), hash, created,
+        created + (kind === "rollout_stage" ? STAGE_APPROVAL_MS : 600_000));
     if (!result.changes) throw new DecisionError("Incident already has a pending proposal");
     const proposal = decodeProposal(get(Number(result.lastInsertRowid)));
     log("proposal_created", { proposal });

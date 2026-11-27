@@ -5,10 +5,17 @@ type Props = {
   incident: IncidentDetail;
   now: number;
   start: (id: number) => Promise<void>;
+  requeue?: (id: number, requestedBy: string) => Promise<void>;
   decide: (id: number, decision: "approve" | "reject", approver: string) => Promise<void>;
 };
 
-export function RolloutStrip({ incident, now, start, decide }: Props) {
+/** Minutes:seconds left on a stage approval window, e.g. "29:58". */
+export function countdown(expiresTs: number, now: number) {
+  const left = Math.max(0, Math.ceil((expiresTs - now) / 1_000));
+  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+}
+
+export function RolloutStrip({ incident, now, start, requeue, decide }: Props) {
   const [confirmed, setConfirmed] = useState(false);
   const [approver, setApprover] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,7 +48,7 @@ export function RolloutStrip({ incident, now, start, decide }: Props) {
       const record = rollout?.stages.find((item) => item.stage === stage);
       const label = record?.outcome === "stage_passed" ? "Passed" : record?.outcome === "stage_failed" ? "Gate failed"
         : record?.outcome === "PARTIAL" ? "PARTIAL" : record?.outcome === "watching_rollout" ? "Holding"
-        : record?.status === "pending" ? record.expires_ts > now ? "Approval needed" : "Expired"
+        : record?.status === "pending" ? record.expires_ts > now ? `Approval needed · ${countdown(record.expires_ts, now)} left` : "Expired"
         : record?.status === "executing" ? "Applying" : (record?.status ?? "Queued");
       return <li key={stage} className={record?.outcome === "stage_passed" ? "stage-passed" : ""}>
         <strong>{stage}%</strong><span>{label}</span>
@@ -57,6 +64,11 @@ export function RolloutStrip({ incident, now, start, decide }: Props) {
       <button disabled={!confirmed || busy}>Propose 10%</button>
     </form>}
     {rollout?.reason && <p className="failure" role="status">{rollout.reason}</p>}
+    {requeue && rollout?.status === "paused" && rollout.stages.at(-1)?.status === "expired" && rollout.stages.at(-1)?.stage === rollout.stage && <form className="approval" onSubmit={(event) => perform(event, () => requeue(incident.id, approver.trim()))}>
+      <label htmlFor="rollout-requeue-name">Re-queue {rollout.stage}% as</label>
+      <input id="rollout-requeue-name" required maxLength={200} value={approver} onChange={(event) => setApprover(event.target.value)} />
+      <button disabled={busy || !approver.trim()}>Re-queue {rollout.stage}% (30 min)</button>
+    </form>}
     {rollout?.rollback?.status === "approved" && <p className="muted">Rollback approved.</p>}
     {pending && <form className="approval" onSubmit={(event) => perform(event, () => {
       const reject = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "reject";

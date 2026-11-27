@@ -73,6 +73,34 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
     return get(id);
   }
 
+  /** Re-queues the current stage of a paused rollout whose stage approval expired unanswered. */
+  async function requeue(id: number, actor: string) {
+    const plan = plans.get(id) as Plan | undefined;
+    if (!plan) throw new DecisionError("Rollout not found", 404);
+    if (plan.status !== "paused") throw new DecisionError("Only a paused rollout can be re-queued");
+    const incident = db.prepare("SELECT status FROM incidents WHERE id=?").get(id) as { status: string } | undefined;
+    if (incident?.status !== "closed") throw new DecisionError("A closed incident is required");
+    if (db.prepare("SELECT 1 FROM proposals WHERE incident_id=? AND status='pending' LIMIT 1").get(id)) {
+      throw new DecisionError("Incident already has a pending proposal");
+    }
+    const latest = (records.all(id) as StageRecord[]).filter((record) => record.stage === plan.stage).at(-1);
+    if (latest?.status !== "expired") throw new DecisionError("Only an expired stage approval can be re-queued");
+    db.prepare("UPDATE rollouts SET status='active',reason=NULL WHERE incident_id=?").run(id);
+    initializing.add(id);
+    try {
+      await proposals.queueRollout(id, plan.flag, plan.feature_id, plan.stage);
+    } catch (error) {
+      db.prepare("UPDATE rollouts SET status='paused',reason=? WHERE incident_id=?")
+        .run(error instanceof Error ? error.message : "Re-queue failed", id);
+      throw error;
+    } finally {
+      initializing.delete(id);
+    }
+    log("rollout_requeued", { incident_id: id, stage: plan.stage, actor, previous_proposal_id: latest.proposal_id });
+    bus.emit("action_done", { incident_id: id, stage: plan.stage, outcome: "requeued" });
+    return get(id);
+  }
+
   function pause(plan: Plan, reason: string) {
     db.prepare("UPDATE rollouts SET status='paused',reason=? WHERE incident_id=?").run(reason, plan.incident_id);
     log("rollout_paused", { incident_id: plan.incident_id, stage: plan.stage, reason });
@@ -95,7 +123,7 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
       return;
     }
     const history = records.all(id) as StageRecord[];
-    const current = history.find((record) => record.stage === stage);
+    const current = history.filter((record) => record.stage === stage).at(-1);
     if (!current) {
       try { await proposals.queueRollout(id, flag, feature, stage); }
       catch (error) {
@@ -158,5 +186,5 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
       }
     } finally { running = false; }
   }
-  return { start, get, tick, status: (id: number) => (plans.get(id) as Plan | undefined)?.status ?? null };
+  return { start, requeue, get, tick, status: (id: number) => (plans.get(id) as Plan | undefined)?.status ?? null };
 }

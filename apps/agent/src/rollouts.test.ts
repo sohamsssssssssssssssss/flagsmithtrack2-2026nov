@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { FlagLiveState } from "@blast/shared";
 import { openDb, type DB } from "./db.js";
 import { canApplyRollout, UnverifiedWrite, type RolloutSnapshot, type RolloutStage } from "./flagsmith.js";
-import { buildProposals } from "./proposals.js";
+import { buildProposals, STAGE_APPROVAL_MS } from "./proposals.js";
 import { buildRollouts, healthGate } from "./rollouts.js";
 
 const dbs: DB[] = [];
@@ -55,7 +55,8 @@ function fixture() {
     }
     time = start + 32_500;
   }
-  return { client, proposals, rollouts, samples, failVerification: () => { failVerify = true; } };
+  return { client, log, db, proposals, rollouts, samples, advance: (ms: number) => { time += ms; },
+    failVerification: () => { failVerify = true; } };
 }
 
 it("checks the ratio, spike, and telemetry coverage", () => {
@@ -118,4 +119,45 @@ it("refuses to hide unrelated overrides or skip the previous percentage", () => 
   state.overrides[0]!.enabled = true;
   expect(canApplyRollout({ state, segment: { id: 19, percentage: 10 } }, 50)).toBe(true);
   expect(canApplyRollout({ state, segment: { id: 19, percentage: 10 } }, 100)).toBe(false);
+});
+
+it("gives each stage approval a 30-minute window", async () => {
+  const { rollouts } = fixture();
+  const plan = await rollouts.start(1, true);
+  const stage = plan!.stages[0]!;
+  expect(stage.expires_ts - (100_000 + 0)).toBe(STAGE_APPROVAL_MS);
+});
+
+it("re-queues an expired stage with a new expiry and audit log, and does not re-pause on the old record", async () => {
+  const { client, log, proposals, rollouts, advance } = fixture();
+  const plan = await rollouts.start(1, true);
+  const first = plan!.stages[0]!;
+  advance(STAGE_APPROVAL_MS + 1);
+  await rollouts.tick();
+  expect(rollouts.get(1)).toMatchObject({ status: "paused", stages: [{ status: "expired" }] });
+  advance(60_000);
+  const requeued = await rollouts.requeue(1, "tester");
+  expect(requeued).toMatchObject({ status: "active", reason: null, stage: 10 });
+  const fresh = requeued!.stages.at(-1)!;
+  expect(fresh.proposal_id).not.toBe(first.proposal_id);
+  expect(fresh).toMatchObject({ status: "pending", stage: 10 });
+  expect(log).toHaveBeenCalledWith("rollout_requeued", expect.objectContaining({ incident_id: 1, stage: 10, actor: "tester" }));
+  await rollouts.tick();
+  expect(rollouts.get(1)).toMatchObject({ status: "active" });
+  await proposals.approve(fresh.proposal_id, "reviewer");
+  expect(client.applyRollout).toHaveBeenCalledOnce();
+});
+
+it("refuses to re-queue a rollout that is not paused on an expired stage", async () => {
+  const { rollouts, proposals, samples } = fixture();
+  await rollouts.start(1, true);
+  await expect(rollouts.requeue(1, "tester")).rejects.toThrow("Only a paused rollout");
+  const plan = rollouts.get(1)!;
+  await proposals.approve(plan.stages[0]!.proposal_id, "reviewer");
+  samples(10, 1);
+  await rollouts.tick();
+  await rollouts.tick();
+  expect(rollouts.get(1)).toMatchObject({ status: "paused" });
+  await proposals.reject(rollouts.get(1)!.rollback!.id, "reviewer");
+  await expect(rollouts.requeue(1, "tester")).rejects.toThrow("Only an expired stage approval");
 });

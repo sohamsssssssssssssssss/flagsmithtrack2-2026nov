@@ -78,6 +78,10 @@ function Dashboard() {
     try { await api(`/api/incidents/${id}/rollout`, { confirmed_fix: true }); }
     finally { await refresh(); }
   }
+  async function requeueRollout(id: number, requestedBy: string) {
+    try { await api(`/api/incidents/${id}/rollout/requeue`, { requested_by: requestedBy }); }
+    finally { await refresh(); }
+  }
 
   return <>
     <header className="topbar">
@@ -119,7 +123,7 @@ function Dashboard() {
               : <p className="empty-line">No flag changes in the last 10 minutes.</p>}
           </section>
         </div>
-        <IncidentCard key={incident?.id ?? "quiet"} incident={incident} evidence={evidence} now={now} onDecision={decide} onPropose={propose} onStartRollout={startRollout} />
+        <IncidentCard key={incident?.id ?? "quiet"} incident={incident} evidence={evidence} now={now} onDecision={decide} onPropose={propose} onStartRollout={startRollout} onRequeueRollout={requeueRollout} />
       </div> : tab === "map" ? <MapView flags={flags} incident={incident} /> : <section className="panel audit">
         <table><thead><tr><th>Proposal</th><th>Flag</th><th>Created</th><th>Approver</th><th>Decision</th><th>Action</th><th>Outcome</th></tr></thead>
           <tbody>{details.flatMap((item) => item.proposals.map((proposal) => {

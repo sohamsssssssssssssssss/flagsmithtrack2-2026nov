@@ -7,10 +7,11 @@ type Props = {
   incident: IncidentDetail | null; evidence: Evidence | null; now: number;
   onDecision: (id: number, decision: "approve" | "reject", approver: string) => Promise<void>;
   onStartRollout?: (id: number) => Promise<void>;
+  onRequeueRollout?: (id: number, requestedBy: string) => Promise<void>;
   onPropose?: (incidentId: number, flag: string) => Promise<void>;
 };
 
-export function IncidentCard({ incident, evidence, now, onDecision, onPropose, onStartRollout }: Props) {
+export function IncidentCard({ incident, evidence, now, onDecision, onPropose, onStartRollout, onRequeueRollout }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -116,7 +117,7 @@ export function IncidentCard({ incident, evidence, now, onDecision, onPropose, o
           {action?.outcome === "not_recovered" ? "Not recovered" : "Recovered"}</li>
       </ol>}
       {incident.fix && <FixPanel job={incident.fix} now={now} decide={onDecision} />}
-      {onStartRollout && <RolloutStrip incident={incident} now={now} start={onStartRollout} decide={onDecision} />}
+      {onStartRollout && <RolloutStrip incident={incident} now={now} start={onStartRollout} requeue={onRequeueRollout} decide={onDecision} />}
       {error && <p role="alert" className="failure">{error}</p>}
     </div>
   </aside>;
