@@ -75,7 +75,7 @@ function Dashboard() {
   }
 
   async function startRollout(id: number) {
-    try { await api(`/api/incidents/${id}/rollout`, { confirmed_fix: true }); }
+    try { await api(`/api/incidents/${id}/rollout`, {}); }
     finally { await refresh(); }
   }
   async function requeueRollout(id: number, requestedBy: string) {

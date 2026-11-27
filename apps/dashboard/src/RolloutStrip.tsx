@@ -16,7 +16,6 @@ export function countdown(expiresTs: number, now: number) {
 }
 
 export function RolloutStrip({ incident, now, start, requeue, decide }: Props) {
-  const [confirmed, setConfirmed] = useState(false);
   const [approver, setApprover] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -64,9 +63,8 @@ export function RolloutStrip({ incident, now, start, requeue, decide }: Props) {
       </li>;
     })}</ol>
     {canStart && <form className="approval" onSubmit={(event) => perform(event, () => start(incident.id))}>
-      <label className="rollout-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-        Fix merged and shop restarted</label>
-      <button disabled={!confirmed || busy}>Propose 10%</button>
+      <p className="muted">The shop must run the demo checkout commit (checked by the agent).</p>
+      <button disabled={busy}>Propose 10%</button>
     </form>}
     {rollout?.reason && <p className="failure" role="status">{rollout.reason}</p>}
     {requeue && requeueable && <form className="approval" onSubmit={(event) => perform(event, () => requeue(incident.id, approver.trim()))}>
