@@ -16,7 +16,8 @@ const rulesFor = (stage: RolloutStage) => [{ type: "ALL", rules: [],
 export function canApplyRollout({ state, segment }: RolloutSnapshot, stage: RolloutStage) {
   if (state.enabled || state.overrides.some((override) => override.segment_id !== segment?.id)) return false;
   const enabled = state.overrides.some((override) => override.enabled);
-  return stage === 10 ? !enabled : enabled && segment?.percentage === (stage === 50 ? 10 : 50);
+  // Re-queuing 10% after an inconclusive hold finds the 10% rollout already live: re-applying it changes no exposure.
+  return stage === 10 ? !enabled || segment?.percentage === 10 : enabled && segment?.percentage === (stage === 50 ? 10 : 50);
 }
 
 export interface Feature { id: number; name: string }

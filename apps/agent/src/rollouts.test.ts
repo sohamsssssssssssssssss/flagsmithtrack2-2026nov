@@ -55,7 +55,7 @@ function fixture() {
     }
     time = start + 32_500;
   }
-  return { client, log, db, proposals, rollouts, samples, advance: (ms: number) => { time += ms; },
+  return { client, log, db, proposals, rollouts, samples, now: () => time, advance: (ms: number) => { time += ms; },
     failVerification: () => { failVerify = true; } };
 }
 
@@ -160,4 +160,45 @@ it("refuses to re-queue a rollout that is not paused on an expired stage", async
   expect(rollouts.get(1)).toMatchObject({ status: "paused" });
   await proposals.reject(rollouts.get(1)!.rollback!.id, "reviewer");
   await expect(rollouts.requeue(1, "tester")).rejects.toThrow("Only an expired stage approval");
+});
+
+it("waits up to 3x the hold before failing a stage with too little telemetry, then re-queues it", async () => {
+  const { client, log, db, proposals, rollouts, advance, now } = fixture();
+  const plan = await rollouts.start(1, true);
+  await proposals.approve(plan!.stages[0]!.proposal_id, "reviewer");
+  // One bucket of flag-on traffic and no comparison cohort: the gate cannot compare.
+  db.prepare("INSERT INTO requests(ts_bucket,route,flag_key,flag_on,count,errors) VALUES (110000,'/checkout','checkout',1,12,0)").run();
+  advance(142_500 - now());
+  await rollouts.tick();
+  expect(rollouts.get(1)).toMatchObject({ status: "active" });
+  expect(rollouts.get(1)!.stages[0]).toMatchObject({ outcome: "watching_rollout" });
+  advance(200_000 + 2_500 - now());
+  await rollouts.tick();
+  expect(rollouts.get(1)).toMatchObject({ status: "paused", reason: "Insufficient cohort telemetry", rollback: null,
+    stages: [{ outcome: "stage_failed" }] });
+  expect(client.disableEverywhere).not.toHaveBeenCalled();
+  const requeued = await rollouts.requeue(1, "tester");
+  expect(requeued).toMatchObject({ status: "active", reason: null, stage: 10 });
+  expect(requeued!.stages.at(-1)).toMatchObject({ status: "pending", stage: 10 });
+  expect(log).toHaveBeenCalledWith("rollout_requeued", expect.objectContaining({ actor: "tester", reason: "insufficient telemetry" }));
+});
+
+it("refuses to re-queue a stage that failed on real errors", async () => {
+  const { rollouts, proposals, samples } = fixture();
+  const plan = await rollouts.start(1, true);
+  await proposals.approve(plan!.stages[0]!.proposal_id, "reviewer");
+  samples(10, 1);
+  await rollouts.tick();
+  await rollouts.tick();
+  const paused = rollouts.get(1)!;
+  expect(paused).toMatchObject({ status: "paused", stages: [{ outcome: "stage_failed" }] });
+  expect(paused.reason).not.toBe("Insufficient cohort telemetry");
+  await proposals.reject(paused.rollback!.id, "reviewer");
+  await expect(rollouts.requeue(1, "tester")).rejects.toThrow("Only an expired stage approval or a stage that lacked telemetry");
+});
+
+it("accepts stage 10 when the 10% rollout is already live", () => {
+  const live = { state: { enabled: false, value: null, overrides: [{ segment_id: 19, enabled: true, value: null }] }, segment: { id: 19, percentage: 10 } };
+  expect(canApplyRollout(live, 10)).toBe(true);
+  expect(canApplyRollout({ ...live, segment: { id: 19, percentage: 50 } }, 10)).toBe(false);
 });

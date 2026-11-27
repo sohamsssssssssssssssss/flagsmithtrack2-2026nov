@@ -32,7 +32,12 @@ export function RolloutStrip({ incident, now, start, requeue, decide }: Props) {
     finally { setBusy(false); }
   }
 
-  const current = rollout?.stages.find((stage) => stage.stage === rollout.stage);
+  // The latest record per stage is the live one; earlier records are history.
+  const latestFor = (stage: number) => rollout?.stages.filter((item) => item.stage === stage).at(-1);
+  const current = latestFor(rollout?.stage ?? 0);
+  const last = rollout?.stages.at(-1);
+  const requeueable = rollout?.status === "paused" && last?.stage === rollout.stage
+    && (last.status === "expired" || (last.outcome === "stage_failed" && last.gate?.reason === "Insufficient cohort telemetry"));
   const pending = rollout?.status === "paused" && rollout.rollback?.status === "pending" && rollout.rollback.expires > now
     ? { id: rollout.rollback.id, label: "Approve disable" }
     : rollout?.status === "active" && current?.status === "pending" && current.expires_ts > now
@@ -45,8 +50,8 @@ export function RolloutStrip({ incident, now, start, requeue, decide }: Props) {
       </span>}
     </div>
     <ol className="rollout-stages">{([10, 50, 100] as const).map((stage) => {
-      const record = rollout?.stages.find((item) => item.stage === stage);
-      const label = record?.outcome === "stage_passed" ? "Passed" : record?.outcome === "stage_failed" ? "Gate failed"
+      const record = latestFor(stage);
+      const label = record?.outcome === "stage_passed" ? "Passed" : record?.outcome === "stage_failed" ? (record.gate?.reason === "Insufficient cohort telemetry" ? "Not enough telemetry" : "Gate failed")
         : record?.outcome === "PARTIAL" ? "PARTIAL" : record?.outcome === "watching_rollout" ? "Holding"
         : record?.status === "pending" ? record.expires_ts > now ? `Approval needed · ${countdown(record.expires_ts, now)} left` : "Expired"
         : record?.status === "executing" ? "Applying" : (record?.status ?? "Queued");
@@ -64,10 +69,10 @@ export function RolloutStrip({ incident, now, start, requeue, decide }: Props) {
       <button disabled={!confirmed || busy}>Propose 10%</button>
     </form>}
     {rollout?.reason && <p className="failure" role="status">{rollout.reason}</p>}
-    {requeue && rollout?.status === "paused" && rollout.stages.at(-1)?.status === "expired" && rollout.stages.at(-1)?.stage === rollout.stage && <form className="approval" onSubmit={(event) => perform(event, () => requeue(incident.id, approver.trim()))}>
-      <label htmlFor="rollout-requeue-name">Re-queue {rollout.stage}% as</label>
+    {requeue && requeueable && <form className="approval" onSubmit={(event) => perform(event, () => requeue(incident.id, approver.trim()))}>
+      <label htmlFor="rollout-requeue-name">Re-queue {rollout?.stage}% as</label>
       <input id="rollout-requeue-name" required maxLength={200} value={approver} onChange={(event) => setApprover(event.target.value)} />
-      <button disabled={busy || !approver.trim()}>Re-queue {rollout.stage}% (30 min)</button>
+      <button disabled={busy || !approver.trim()}>Re-queue {rollout?.stage}% (30 min)</button>
     </form>}
     {rollout?.rollback?.status === "approved" && <p className="muted">Rollback approved.</p>}
     {pending && <form className="approval" onSubmit={(event) => perform(event, () => {

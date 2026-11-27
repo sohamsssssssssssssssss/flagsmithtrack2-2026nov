@@ -17,10 +17,12 @@ type StageRecord = {
   outcome_ts: number | null; verify_json: string | null; expires_ts: number;
 };
 
+export const INSUFFICIENT_TELEMETRY = "Insufficient cohort telemetry";
+
 export function healthGate(on: Sample, off: Sample, spike: boolean, coverage: boolean) {
   const comparison = compareRates(on, off);
   const reason = spike ? "Error spike detected"
-    : !coverage || !comparison.test ? "Insufficient cohort telemetry"
+    : !coverage || !comparison.test ? INSUFFICIENT_TELEMETRY
     : on.rate! > 1.5 * off.rate! ? "Flag-on error rate exceeds 1.5× control" : null;
   return { ok: reason === null, reason, on, off, spike, ...comparison };
 }
@@ -84,7 +86,12 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
       throw new DecisionError("Incident already has a pending proposal");
     }
     const latest = (records.all(id) as StageRecord[]).filter((record) => record.stage === plan.stage).at(-1);
-    if (latest?.status !== "expired") throw new DecisionError("Only an expired stage approval can be re-queued");
+    const insufficient = latest?.status === "approved" && latest.outcome === "stage_failed"
+      && JSON.parse(latest.verify_json ?? "{}").gate?.reason === INSUFFICIENT_TELEMETRY;
+    if (!latest || (latest.status !== "expired" && !insufficient)) {
+      throw new DecisionError("Only an expired stage approval or a stage that lacked telemetry can be re-queued");
+    }
+    const why = latest.status === "expired" ? "expired" : "insufficient telemetry";
     db.prepare("UPDATE rollouts SET status='active',reason=NULL WHERE incident_id=?").run(id);
     initializing.add(id);
     try {
@@ -96,7 +103,7 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
     } finally {
       initializing.delete(id);
     }
-    log("rollout_requeued", { incident_id: id, stage: plan.stage, actor, previous_proposal_id: latest.proposal_id });
+    log("rollout_requeued", { incident_id: id, stage: plan.stage, actor, reason: why, previous_proposal_id: latest.proposal_id });
     bus.emit("action_done", { incident_id: id, stage: plan.stage, outcome: "requeued" });
     return get(id);
   }
@@ -139,27 +146,37 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
     if (current.outcome !== "watching_rollout" || current.outcome_ts === null) return;
     // Start after one SDK refresh and use complete buckets throughout the hold.
     const start = Math.ceil((current.outcome_ts + 5_000) / BUCKET_MS) * BUCKET_MS;
-    const end = start + plan.hold_ms;
-    if (now() < end + 2_500) return;
 
-    const rows = db.prepare("SELECT * FROM requests WHERE ts_bucket>=? AND ts_bucket<?")
-      .all(start - 620_000, end) as RequestRow[];
-    const series = aggregate(rows);
-    const inHold = rows.filter((row) => row.ts_bucket >= start && row.route === route && row.flag_key === flag);
-    const sample = (on: boolean) => totals(inHold.filter((row) => Boolean(row.flag_on) === on)
-      .map((row) => ({ requests: row.count, errors: row.errors })));
-    const on = sample(true), liveOff = sample(false);
-    // At 100% the preceding 50% hold supplies the comparison cohort.
-    const control = history.find((record) => record.stage === 50 && record.outcome === "stage_passed");
-    const off: Sample = stage === 100 && control?.verify_json ? JSON.parse(control.verify_json).gate.off : liveOff;
-    const coverage = new Set(inHold.filter((row) => row.count > 0)
-      .map((row) => Math.floor(row.ts_bucket / BUCKET_MS))).size === plan.hold_ms / BUCKET_MS;
-    let spike = false;
-    for (let ts = start + BUCKET_MS; ts <= end && !spike; ts += BUCKET_MS) {
-      spike = Boolean(detectSpike(series.overall, ts) || Object.values(series.by_route).some((buckets) => detectSpike(buckets, ts)));
+    // Too little telemetry is not evidence of harm: wait for more complete buckets, up to 3x the hold, before failing.
+    const cap = start + 3 * plan.hold_ms;
+    const gateAt = (windowEnd: number) => {
+      const rows = db.prepare("SELECT * FROM requests WHERE ts_bucket>=? AND ts_bucket<?")
+        .all(start - 620_000, windowEnd) as RequestRow[];
+      const series = aggregate(rows);
+      const inHold = rows.filter((row) => row.ts_bucket >= start && row.route === route && row.flag_key === flag);
+      const sample = (on: boolean) => totals(inHold.filter((row) => Boolean(row.flag_on) === on)
+        .map((row) => ({ requests: row.count, errors: row.errors })));
+      const on = sample(true), liveOff = sample(false);
+      // At 100% the preceding 50% hold supplies the comparison cohort.
+      const control = history.find((record) => record.stage === 50 && record.outcome === "stage_passed");
+      const off: Sample = stage === 100 && control?.verify_json ? JSON.parse(control.verify_json).gate.off : liveOff;
+      const coverage = new Set(inHold.filter((row) => row.count > 0)
+        .map((row) => Math.floor(row.ts_bucket / BUCKET_MS))).size >= plan.hold_ms / BUCKET_MS;
+      let spike = false;
+      for (let ts = start + BUCKET_MS; ts <= windowEnd && !spike; ts += BUCKET_MS) {
+        spike = Boolean(detectSpike(series.overall, ts) || Object.values(series.by_route).some((buckets) => detectSpike(buckets, ts)));
+      }
+      return { ...healthGate(on, off, spike, coverage && (stage !== 100 || liveOff.requests === 0)),
+        control: stage === 100 ? "stage_50" : "concurrent", start, end: windowEnd };
+    };
+    let end = start + plan.hold_ms;
+    if (now() < end + 2_500) return;
+    let gate = gateAt(end);
+    if (!gate.ok && gate.reason === INSUFFICIENT_TELEMETRY) {
+      const latest = Math.min(cap, Math.floor((now() - 2_500) / BUCKET_MS) * BUCKET_MS);
+      if (latest > end) gate = gateAt(end = latest);
+      if (!gate.ok && gate.reason === INSUFFICIENT_TELEMETRY && latest < cap) return;
     }
-    const gate = { ...healthGate(on, off, spike, coverage && (stage !== 100 || liveOff.requests === 0)),
-      control: stage === 100 ? "stage_50" : "concurrent", start, end };
     const next = stages[stages.indexOf(stage) + 1];
     const outcome = gate.ok ? "stage_passed" : "stage_failed";
     db.transaction(() => {
@@ -167,7 +184,9 @@ export function buildRollouts(db: DB, proposals: ReturnType<typeof buildProposal
         .run(JSON.stringify({ ...JSON.parse(current.verify_json ?? "{}"), gate }), outcome, now(), current.action_id);
       if (gate.ok && next) db.prepare("UPDATE rollouts SET stage=? WHERE incident_id=?").run(next, id);
       else if (gate.ok) db.prepare("UPDATE rollouts SET status='complete' WHERE incident_id=?").run(id);
-      else db.prepare("UPDATE rollouts SET status='paused',reason=? WHERE incident_id=?").run(gate.reason, id);
+      // Insufficient telemetry pauses without proposing a rollback: nothing showed harm.
+      else db.prepare("UPDATE rollouts SET status='paused',reason=?,rollback_checked=? WHERE incident_id=?")
+        .run(gate.reason, gate.reason === INSUFFICIENT_TELEMETRY ? 1 : 0, id);
     })();
     log("rollout_gate", { incident_id: id, stage, outcome, gate });
     bus.emit("action_done", { incident_id: id, stage, outcome });

@@ -26,7 +26,7 @@ export type Action = {
 export type Rollout = {
   stage: 10 | 50 | 100; status: "active" | "paused" | "complete"; hold_ms: number; reason: string | null;
   stages: { stage: number; proposal_id: number; expires_ts: number; status: string; outcome: string | null;
-    gate: { on: Cohort; off: Cohort; control: string } | null }[];
+    gate: { on: Cohort; off: Cohort; control: string; reason?: string | null } | null }[];
   rollback: Proposal | null;
 };
 export type FixJob = {
