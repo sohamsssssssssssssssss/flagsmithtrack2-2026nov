@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { audit } from "./audit.js";
+import { ROOT } from "./config.js";
 import type { FlagLiveState } from "@blast/shared";
 
 type Fetch = typeof fetch;
@@ -26,6 +30,14 @@ export interface WriteResult { ok: boolean; before: FlagLiveState; after: FlagLi
 
 export class FlagsmithError extends Error {
   constructor(message: string, readonly status?: number) { super(message); }
+}
+
+/** Demo-only: the beta_cohort segment that the kill switch removes so rollouts start clean. */
+export function demoBetaSegmentIds(): number[] {
+  try {
+    const { segments } = JSON.parse(readFileSync(join(ROOT, "config/flags.json"), "utf8")) as { segments?: { beta_cohort?: number } };
+    return segments?.beta_cohort ? [segments.beta_cohort] : [];
+  } catch { return []; }
 }
 
 const toScalar = (v: ApiValue) =>
@@ -192,8 +204,14 @@ export class FlagsmithClient {
     }
   }
 
-  /** Turns off the environment default AND every segment override; ok only if nothing still serves the flag on. */
-  async disableEverywhere(featureId: number, authorize?: (state: FlagLiveState) => void): Promise<WriteResult> {
+  /**
+   * Turns off the environment default AND every segment override, then deletes the demo beta override.
+   * ok only if nothing still serves the flag on and the deleted overrides are gone.
+   */
+  async disableEverywhere(featureId: number, authorize?: (state: FlagLiveState) => void,
+    options: { removeSegmentIds?: number[]; log?: (event: string, data: Record<string, unknown>) => void } = {}): Promise<WriteResult> {
+    const removeIds = options.removeSegmentIds ?? demoBetaSegmentIds();
+    const log = options.log ?? audit;
     const path = `/api/__future__/environments/${await this.resolveEnvKey()}/features/${featureId}/`;
     const current = await this.req<ApiFlag>("GET", path);
     const before = normalize(current);
@@ -201,13 +219,19 @@ export class FlagsmithClient {
     authorize?.(before);
     try {
       await this.req("PATCH", path, body, !authorize);
+      for (const segmentId of removeIds) {
+        if (!current.segment_overrides.some((o) => o.segment.id === segmentId)) continue;
+        await this.req("DELETE", path + `segment-overrides/${segmentId}/`, undefined, false);
+        log("demo_override_deleted", { feature_id: featureId, segment_id: segmentId });
+      }
     } catch (error) {
       if (error instanceof FlagsmithError && error.status && error.status < 500) throw error;
       throw new UnverifiedWrite("Flagsmith write could not be confirmed");
     }
     try {
       const after = await this.getState(featureId);
-      return { ok: !after.enabled && after.overrides.every((o) => !o.enabled), before, after };
+      const removed = removeIds.every((id) => !after.overrides.some((o) => o.segment_id === id));
+      return { ok: !after.enabled && after.overrides.every((o) => !o.enabled) && removed, before, after };
     } catch {
       throw new UnverifiedWrite("Flagsmith accepted the write but its state could not be verified");
     }

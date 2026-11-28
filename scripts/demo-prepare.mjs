@@ -2,10 +2,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 import { tsImport } from "tsx/esm/api";
 
 const root = new URL("../", import.meta.url);
-const rootPath = root.pathname.replace(/%20/g, " ");
+const rootPath = fileURLToPath(root);
 const git = (...args) => execFileSync("git", args, { cwd: rootPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const fail = (message) => { console.error(`STOPPED: ${message}`); process.exit(1); };
 
@@ -49,7 +50,7 @@ for (const branch of git("branch", "--list", "blast/fix-*").split("\n").map((b) 
 }
 
 // 3. Flag state: reset runs its own verified confirmation.
-const reset = spawnSync(process.execPath, [new URL("./demo-reset.mjs", import.meta.url).pathname], { stdio: "inherit", cwd: rootPath });
+const reset = spawnSync(process.execPath, [fileURLToPath(new URL("./demo-reset.mjs", import.meta.url))], { stdio: "inherit", cwd: rootPath });
 if (reset.status !== 0) fail("demo-reset did not complete; flag state is not verified");
 const [{ FlagsmithClient }, { loadConfig }] = await Promise.all([
   tsImport("../apps/agent/src/flagsmith.ts", import.meta.url),
@@ -68,7 +69,7 @@ if (!state.overrides.some((o) => o.segment_id === segments.beta_cohort)) {
 }
 
 // 4. Runtime data. Flagmap and identities stay.
-const blast = new URL("../.blast/", import.meta.url).pathname;
+const blast = fileURLToPath(new URL("../.blast/", import.meta.url));
 for (const name of ["db.sqlite", "db.sqlite-wal", "db.sqlite-shm"]) rmSync(blast + name, { force: true });
 rmSync(blast + "sandboxes", { recursive: true, force: true });
 for (const name of existsSync(blast) ? readdirSync(blast) : []) {

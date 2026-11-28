@@ -15,6 +15,11 @@ function fakeApi(initial: any, opts: { fail5xx?: number } = {}) {
     if (fails-- > 0) return new Response("boom", { status: 502 });
     if (url.includes("/environments/") && url.includes("/projects/"))
       return Response.json({ results: [{ name: "Development", api_key: "envkey" }] });
+    if (init.method === "DELETE") {
+      const id = Number(/segment-overrides\/(\d+)\//.exec(url)![1]);
+      flag.segment_overrides = flag.segment_overrides.filter((o: any) => o.segment.id !== id);
+      return new Response(null, { status: 204 });
+    }
     if (init.method === "PATCH") {
       if (body.environment_default) flag.environment_default = { ...flag.environment_default, ...body.environment_default };
       for (const o of body.segment_overrides ?? []) {
@@ -116,4 +121,32 @@ describe("FlagsmithClient", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(err.message).not.toContain(KEY);
   });
+});
+
+it("kill switch deletes the beta override, audits it, and keeps other overrides", async () => {
+  const { client, calls } = fakeApi(base);
+  const log = vi.fn();
+  const r = await client.disableEverywhere(1, undefined, { removeSegmentIds: [8], log });
+  expect(r.ok).toBe(true);
+  expect(r.after.overrides.map((o) => o.segment_id)).toEqual([7]);
+  expect(calls.some((c) => c.method === "DELETE" && c.url.endsWith("/segment-overrides/8/"))).toBe(true);
+  expect(log).toHaveBeenCalledWith("demo_override_deleted", { feature_id: 1, segment_id: 8 });
+});
+
+it("kill switch reports not ok if the beta override survives the delete", async () => {
+  const { client } = fakeApi(base);
+  (client as any).fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+    if (init.method === "DELETE") return new Response(null, { status: 204 });
+    const { client: fresh } = fakeApi(base);
+    return (fresh as any).fetchImpl(url, init);
+  });
+  const r = await client.disableEverywhere(1, undefined, { removeSegmentIds: [8], log: vi.fn() });
+  expect(r.ok).toBe(false);
+});
+
+it("demo break recreates the beta override after the kill switch deleted it", async () => {
+  const { client } = fakeApi({ ...base, segment_overrides: base.segment_overrides.filter((o) => o.segment.id !== 8) });
+  const r = await client.setSegmentOverrideEnabled(1, 8, true);
+  expect(r.ok).toBe(true);
+  expect(r.after.overrides.find((o) => o.segment_id === 8)?.enabled).toBe(true);
 });

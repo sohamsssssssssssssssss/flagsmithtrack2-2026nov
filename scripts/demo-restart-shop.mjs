@@ -1,8 +1,9 @@
 // After merging a fix into demo: pull demo and restart only the shop, then print the commit it runs.
 import { execFileSync, spawn } from "node:child_process";
 import { openSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const rootPath = new URL("../", import.meta.url).pathname.replace(/%20/g, " ");
+const rootPath = fileURLToPath(new URL("../", import.meta.url));
 const git = (...args) => execFileSync("git", args, { cwd: rootPath, encoding: "utf8" }).trim();
 const fail = (message) => { console.error(`STOPPED: ${message}`); process.exit(1); };
 
@@ -15,7 +16,7 @@ for (const pid of execFileSync("lsof", ["-ti", "tcp:4100"], { encoding: "utf8" }
 }
 await new Promise((resolve) => setTimeout(resolve, 1_000));
 
-const log = openSync(new URL("../.blast/shop.log", import.meta.url).pathname.replace(/%20/g, " "), "a");
+const log = openSync(fileURLToPath(new URL("../.blast/shop.log", import.meta.url)), "a");
 spawn("pnpm", ["--filter", "@blast/shop-api", "dev"], { cwd: rootPath, detached: true, stdio: ["ignore", log, log] }).unref();
 
 let running = null;
